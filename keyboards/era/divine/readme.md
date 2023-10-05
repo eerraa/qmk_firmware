@@ -1,9 +1,9 @@
 # DIVINE
 
-DIVINE Keyboard
+DIVINE PCB
 
 * Keyboard Maintainer: [ERA](https://github.com/eerraa)
-* Hardware Supported: DIVINE 1.0.0 PCB
+* Hardware Supported: DIVINE
 * Hardware Availability: [ERA](https://github.com/eerraa)
 
 Make example for this keyboard (after setting up your build environment):
