@@ -3,17 +3,20 @@
 
 #pragma once
 
-#ifdef VIA_ENABLE
 #include "quantum.h"
 
-// struct to save things
-typedef struct {
-    uint8_t backlight_bright;                 // 1 byte
-    uint8_t backlight_effect;                 // 1 byte
-    uint8_t breathing_period;                 // 1 byte
-    uint8_t blink_speed;                      // 1 byte
-} blink_settings_config;                      // total 4 bytes
+typedef union {
+    uint32_t raw;
+    struct {
+        uint8_t    backlight_effect :4;
+        uint8_t    breathing_period :4;
+        uint8_t    blink_speed      :4;
+    };
+} my_config_t;
 
+extern my_config_t g_my_config;
+
+#ifdef VIA_ENABLE
 // via value id declaration
 enum n87s_custom_value_id {
     id_custom_backlight_brightness = 0,

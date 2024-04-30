@@ -1,50 +1,84 @@
 // Copyright 2024 Hyojin Bak (@eerraa)
 // SPDX-License-Identifier: GPL-2.0-or-later
-#ifdef VIA_ENABLE
 
 #include "n8x.h"
 #include "quantum.h"
 #include "eeprom.h"
 #include "backlight.h"
 
-static bool countstart = false;
-static uint32_t blink_timer = 0;
+my_config_t g_my_config;
 backlight_config_t backlight_config;
 
-blink_settings_config g_config = {
-    .backlight_bright = 10,
-    .backlight_effect = 0,
-    .blink_speed = 2,
-    .breathing_period = 5
-};
+static bool countstart = false;
+static uint32_t blink_timer = 0;
+
+static void read_my_config_from_eeprom(my_config_t* config) {
+    config->raw = eeconfig_read_kb() & 0xffffff;
+}
+
+static void write_my_config_to_eeprom(my_config_t* config) {
+    eeconfig_update_kb(config->raw);
+}
+
+void matrix_init_kb(void) {
+	read_my_config_from_eeprom(&g_my_config);
+    matrix_init_user();
+}
 
 void keyboard_post_init_kb(void) {
-	
-    backlight_level(g_config.backlight_bright);
-    breathing_period_set(g_config.breathing_period);
-    if (g_config.backlight_effect == 1) breathing_enable();
+    breathing_period_set(g_my_config.breathing_period);
+    if (g_my_config.backlight_effect == 1) {
+        breathing_enable();
+    }
     keyboard_post_init_user();
 }
 
-void values_load(void)
-{
-    eeprom_read_block( &g_config, ((void*)VIA_EEPROM_CUSTOM_CONFIG_ADDR), sizeof(g_config) );
+void eeconfig_init_kb(void) {
+    g_my_config.raw = 0;
+    g_my_config.backlight_effect = 0;
+    g_my_config.breathing_period = 5;
+    g_my_config.blink_speed = 3;
+    write_my_config_to_eeprom(&g_my_config);
+    eeconfig_init_user();
 }
 
-void values_save(void)
-{
-    eeprom_update_block( &g_config, ((void*)VIA_EEPROM_CUSTOM_CONFIG_ADDR), sizeof(g_config) );
-} 
+void housekeeping_task_kb(void){
+	if (countstart) {
+		if (timer_elapsed32(blink_timer) > (g_my_config.blink_speed * 20)) {
+            if (g_my_config.backlight_effect == 2) {
+                backlight_set(backlight_config.level);
+            } else if (g_my_config.backlight_effect == 3) {
+                backlight_set(0);
+            }
+			countstart = false;
+		}
+	}
+}
 
-void via_init_kb(void)
-{
-    if (via_eeprom_is_valid()) {
-        values_load();
-    } else    {
-        values_save();
+bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+    if (record->event.pressed) {
+        switch (g_my_config.backlight_effect) {
+            case 2:
+                if (!countstart) {
+                    blink_timer = timer_read32();
+                    backlight_set(0);
+                    countstart = true;
+                }
+                break;
+            case 3:
+                if (!countstart) {
+                    blink_timer = timer_read32();
+                    backlight_set(backlight_config.level);
+                    countstart = true;
+                }
+                break;
+        }
     }
+
+    return process_record_user(keycode, record);
 }
 
+#ifdef VIA_ENABLE
 void custom_config_get_value( uint8_t *data )
 {
     // data = [ value_id, value_data ]
@@ -55,22 +89,22 @@ void custom_config_get_value( uint8_t *data )
     {
         case id_custom_backlight_brightness:
         {
-            *value_data = g_config.backlight_bright;
+            *value_data = backlight_config.level;
             break;
         }
         case id_custom_backlight_effect:
         {
-            *value_data = g_config.backlight_effect;
+            *value_data = g_my_config.backlight_effect;
             break;
         }
         case id_custom_breathing_period:
         {
-            *value_data = g_config.breathing_period;
+            *value_data = g_my_config.breathing_period;
             break;
         }
         case id_custom_blink_speed:
         {
-            *value_data = g_config.blink_speed;
+            *value_data = g_my_config.blink_speed;
             break;
         }
     }
@@ -86,14 +120,14 @@ void custom_config_set_value( uint8_t *data )
     {
         case id_custom_backlight_brightness:
         {
-            g_config.backlight_bright = *value_data;
-            backlight_level(g_config.backlight_bright);
+            backlight_config.level = *value_data;
+            backlight_level(backlight_config.level);
             break;
         }
         case id_custom_backlight_effect:
         {
-            g_config.backlight_effect = *value_data;
-            switch (g_config.backlight_effect) {
+            g_my_config.backlight_effect = *value_data;
+            switch (g_my_config.backlight_effect) {
                 case 0:
                     breathing_disable();
                     break;
@@ -102,7 +136,7 @@ void custom_config_set_value( uint8_t *data )
                     break;
                 case 2:
                     breathing_disable();
-                    backlight_set(g_config.backlight_bright);
+                    backlight_set(backlight_config.level);
                     break;
                 case 3:
                     breathing_disable();
@@ -113,13 +147,13 @@ void custom_config_set_value( uint8_t *data )
         }
         case id_custom_breathing_period:
         {
-            g_config.breathing_period = *value_data;
-            breathing_period_set(g_config.breathing_period);
+            g_my_config.breathing_period = *value_data;
+            breathing_period_set(g_my_config.breathing_period);
             break;
         }
         case id_custom_blink_speed:
         {
-            g_config.blink_speed = *value_data;
+            g_my_config.blink_speed = *value_data;
             break;
         }
     }
@@ -147,7 +181,7 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length)
             }
             case id_custom_save:
             {
-                values_save();
+                write_my_config_to_eeprom(&g_my_config);
                 break;
             }
             default:
@@ -164,41 +198,4 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length)
     *command_id = id_unhandled;
 
 }
-
-void housekeeping_task_kb(void){
-	if (countstart) {
-		if (timer_elapsed32(blink_timer) > (g_config.blink_speed * 20)) {
-            if (g_config.backlight_effect == 2) {
-                backlight_set(g_config.backlight_bright);
-            } else if (g_config.backlight_effect == 3) {
-                backlight_set(0);
-            }
-			countstart = false;
-		}
-	}
-}
-
-bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
-    if (record->event.pressed) {
-        switch (g_config.backlight_effect) {
-            case 2:
-                if (!countstart) {
-                    blink_timer = timer_read32();
-                    backlight_set(0);
-                    countstart = true;
-                }
-                break;
-            case 3:
-                if (!countstart) {
-                    blink_timer = timer_read32();
-                    backlight_set(g_config.backlight_bright);
-                    countstart = true;
-                }
-                break;
-        }
-    }
-    
-    return process_record_user(keycode, record);
-}
-
 #endif
