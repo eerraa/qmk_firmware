@@ -18,8 +18,8 @@ static void write_brick65s_config_to_eeprom(brick65s_config_t* config) {
 void eeconfig_init_kb(void) {
     g_brick65s_config.raw = 0;
     g_brick65s_config.indicator_toggle = true;
-    g_brick65s_config.indicator_hsv.h = 0;
-    g_brick65s_config.indicator_hsv.s = 0;
+    g_brick65s_config.indicator_hsv.h = 255;
+    g_brick65s_config.indicator_hsv.s = 255;
     g_brick65s_config.indicator_hsv.v = 255;
     write_brick65s_config_to_eeprom(&g_brick65s_config);
     eeconfig_init_user();
@@ -50,6 +50,9 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max)
         } else {
             RGB_MATRIX_INDICATOR_SET_COLOR(1, 0, 0, 0);
         }
+    } else {
+        RGB_MATRIX_INDICATOR_SET_COLOR(0, 0, 0, 0);
+        RGB_MATRIX_INDICATOR_SET_COLOR(1, 0, 0, 0);
     }
 
     return true;
