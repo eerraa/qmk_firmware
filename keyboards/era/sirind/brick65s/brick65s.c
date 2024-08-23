@@ -40,19 +40,19 @@ bool rgb_matrix_indicators_advanced_kb(uint8_t led_min, uint8_t led_max)
                                           .s = g_brick65s_config.indicator_hsv.s,
                                           .v = g_brick65s_config.indicator_hsv.v } );
         if (host_keyboard_led_state().caps_lock) {
-            RGB_MATRIX_INDICATOR_SET_COLOR(0, rgb_caps.r, rgb_caps.g, rgb_caps.b);
+            rgb_matrix_set_color(0, rgb_caps.r, rgb_caps.g, rgb_caps.b);
         } else {
-            RGB_MATRIX_INDICATOR_SET_COLOR(0, 0, 0, 0);
+            rgb_matrix_set_color(0, 0, 0, 0);
         }
         
         if (host_keyboard_led_state().scroll_lock) {
-            RGB_MATRIX_INDICATOR_SET_COLOR(1, rgb_caps.r, rgb_caps.g, rgb_caps.b);
+            rgb_matrix_set_color(1, rgb_caps.r, rgb_caps.g, rgb_caps.b);
         } else {
-            RGB_MATRIX_INDICATOR_SET_COLOR(1, 0, 0, 0);
+            rgb_matrix_set_color(1, 0, 0, 0);
         }
     } else {
-        RGB_MATRIX_INDICATOR_SET_COLOR(0, 0, 0, 0);
-        RGB_MATRIX_INDICATOR_SET_COLOR(1, 0, 0, 0);
+        rgb_matrix_set_color(0, 0, 0, 0);
+        rgb_matrix_set_color(1, 0, 0, 0);
     }
 
     return true;
