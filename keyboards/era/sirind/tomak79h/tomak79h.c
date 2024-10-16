@@ -85,11 +85,11 @@ bool rgb_matrix_indicators_kb(void) {
                                           .s = g_tomak_config.indicator_hsv.s,
                                           .v = g_tomak_config.indicator_hsv.v } );
         if (host_keyboard_led_state().caps_lock) {
-            for (uint8_t i = 93; i <= 101; ++i) {
+            for (uint8_t i = 87; i <= 95; ++i) {
                 rgb_matrix_set_color(i, rgb_caps.r, rgb_caps.g, rgb_caps.b);
             }
         } else if (g_tomak_config.indicator_override) {
-            for (uint8_t i = 93; i <= 101; ++i) {
+            for (uint8_t i = 87; i <= 95; ++i) {
                 rgb_matrix_set_color(i, 0, 0, 0);
             }
         }
