@@ -96,7 +96,7 @@ bool rgb_matrix_indicators_kb(void) {
     }
     
     if (g_tomak_config.per_key_toggle == false) {
-        for (uint8_t i = 0; i <= 92; ++i) {
+        for (uint8_t i = 0; i <= 86; ++i) {
             rgb_matrix_set_color(i, 0, 0, 0);
         }
     }
