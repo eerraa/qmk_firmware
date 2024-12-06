@@ -1,5 +1,7 @@
 # Tomak79S, Solder ver
 
+![Tomak79S](https://i.imgur.com/Pq2itWD.jpeg)
+
 Ergonomics Split Keyboard powered by RP2040.
 
 * Keyboard Maintainer: [ERA](https://github.com/eerraa)
