@@ -60,7 +60,7 @@ static void write_tomak_config_to_eeprom(tomak_config_t* config) {
 
 void eeconfig_init_kb(void) {
     g_tomak_config.raw = 0;
-    g_tomak_config.indicator_toggle = false;
+    g_tomak_config.indicator_toggle = true;
     g_tomak_config.indicator_override = false;
     g_tomak_config.indicator_hsv.h = 255;
     g_tomak_config.indicator_hsv.s = 255;
