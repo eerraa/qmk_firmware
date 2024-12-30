@@ -5,7 +5,7 @@
 
 * Keyboard Maintainer: [ERA](https://github.com/eerraa)
 * Hardware supported: NEWWON
-* Hardware availability: [NEWWON](https://allthatkeyboard.com/)
+* Hardware availability: [NEWWON](https://newonemt12.cafe24.com/)
 
 Make example for this keyboard (after setting up your build environment):
 
