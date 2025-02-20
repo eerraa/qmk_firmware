@@ -1,6 +1,6 @@
 {
     "manufacturer": "eerraa",
-    "keyboard_name": "CLASSIC.D",
+    "keyboard_name": "CLASSIC.D.CORE",
     "maintainer": "eerraa",
     "backlight": {
         "breathing": true,
@@ -23,7 +23,7 @@
         "velocikey": true
     },
     "indicators": {
-        "caps_lock": "GP11",
+        "caps_lock": "GP12",
         "scroll_lock": "GP8"
     },
     "matrix_pins": {
@@ -53,12 +53,12 @@
     "url": "",
     "usb": {
         "device_version": "1.0.0",
-        "pid": "0x0015",
+        "pid": "0x0016",
         "vid": "0x4552"
     },
     "ws2812": {
         "driver": "vendor",
-        "pin": "GP12"
+        "pin": "GP11"
     },
     "community_layouts": ["tkl_ansi", "tkl_ansi_split_bs_rshift", "tkl_ansi_tsangan", "tkl_ansi_tsangan_split_bs_rshift", "tkl_iso", "tkl_iso_split_bs_rshift", "tkl_iso_tsangan", "tkl_iso_tsangan_split_bs_rshift"],
     "layouts": {
