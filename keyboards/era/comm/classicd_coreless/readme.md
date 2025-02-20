@@ -1,4 +1,4 @@
-# Classic.D CORE
+# Classic.D CORELESS
 
 * Keyboard Maintainer: [ERA](https://github.com/eerraa)
 * Hardware supported: Classic.D
@@ -6,11 +6,11 @@
 
 Make example for this keyboard (after setting up your build environment):
 
-    make era/comm/classicdcore:default
+    make era/comm/classicd_coreless:default
 
 Flashing example for this keyboard:
 
-    make era/comm/classicdcore:default:flash
+    make era/comm/classicd_coreless:default:flash
 
 See the [build environment setup](https://docs.qmk.fm/#/getting_started_build_tools) and the [make instructions](https://docs.qmk.fm/#/getting_started_make_guide) for more information. Brand new to QMK? Start with our [Complete Newbs Guide](https://docs.qmk.fm/#/newbs).
 
