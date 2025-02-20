@@ -1,6 +1,6 @@
 {
     "manufacturer": "eerraa",
-    "keyboard_name": "CLASSIC.D.CORE",
+    "keyboard_name": "CLASSIC.D CORE",
     "maintainer": "eerraa",
     "backlight": {
         "breathing": true,
@@ -53,7 +53,7 @@
     "url": "",
     "usb": {
         "device_version": "1.0.0",
-        "pid": "0x0016",
+        "pid": "0x0017",
         "vid": "0x4552"
     },
     "ws2812": {
