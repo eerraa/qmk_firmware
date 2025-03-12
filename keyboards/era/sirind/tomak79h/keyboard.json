@@ -200,7 +200,7 @@
     },
     "url": "",
     "usb": {
-        "device_version": "1.0.0",
+        "device_version": "1.0.1",
         "pid": "0x0014",
         "vid": "0x4552"
     },
