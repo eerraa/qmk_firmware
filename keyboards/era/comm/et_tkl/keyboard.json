@@ -21,7 +21,7 @@
         "nkro": true
     },
     "indicators": {
-        "caps_lock": "GP12",
+        "caps_lock": "GP11",
         "scroll_lock": "GP8"
     },
     "matrix_pins": {
