@@ -365,6 +365,18 @@ uint8_t rgblight_get_val(void);
 bool    rgblight_is_enabled(void);
 hsv_t   rgblight_get_hsv(void);
 
+/**
+ * @brief A weak function that keyboard code can implement to override LEDs for indicators.
+ *
+ * This function is called at the end of every lighting update, just before the
+ * data is flushed to the LEDs. This allows keyboard-specific code to draw
+ * indicators (like Caps Lock status) on top of any existing RGBLIGHT effect.
+ *
+ * To use this, implement a function with the same name in your keyboard's C files
+ * (e.g., keymap.c or a custom feature file).
+ */
+bool rgblight_indicators_kb(void);
+
 /* === qmk_firmware (core)internal Functions === */
 void     rgblight_init(void);
 void     rgblight_suspend(void);

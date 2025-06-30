@@ -138,6 +138,10 @@ __attribute__((weak)) rgb_t rgblight_hsv_to_rgb(hsv_t hsv) {
     return hsv_to_rgb(hsv);
 }
 
+__attribute__((weak)) bool rgblight_indicators_kb(void) {
+    return true;
+}
+
 uint8_t rgblight_led_index(uint8_t index) {
 #if defined(RGBLIGHT_LED_MAP)
     return pgm_read_byte(&led_map[index]) - rgblight_ranges.clipping_start_pos;
@@ -877,6 +881,8 @@ void rgblight_set(void) {
     }
 #endif
 
+    rgblight_indicators_kb();
+    
     rgblight_driver.flush();
 }
 
