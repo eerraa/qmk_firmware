@@ -17,15 +17,15 @@ static void write_riley_config_to_eeprom(riley_config_t* config) {
 
 void eeconfig_init_kb(void) {
     // Caps Lock
-    g_riley_config.ind_caps_toggle = true;
+    g_riley_config.ind_caps_toggle = false;
     g_riley_config.ind_caps_hsv = (HSV){0, 255, 255}; // Red
 
     // Scroll Lock
-    g_riley_config.ind_scroll_toggle = true;
+    g_riley_config.ind_scroll_toggle = false;
     g_riley_config.ind_scroll_hsv = (HSV){170, 255, 255}; // Blue
 
     // Num Lock
-    g_riley_config.ind_num_toggle = true;
+    g_riley_config.ind_num_toggle = false;
     g_riley_config.ind_num_hsv = (HSV){85, 255, 255}; // Green
     
     write_riley_config_to_eeprom(&g_riley_config);
