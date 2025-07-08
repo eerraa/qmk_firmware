@@ -1,6 +1,6 @@
 {
     "manufacturer": "eerraa",
-    "keyboard_name": "CLASSIC.D CORE",
+    "keyboard_name": "Classic.D_A87_CORELESS",
     "maintainer": "eerraa",
     "backlight": {
         "breathing": true,
@@ -18,9 +18,7 @@
         "bootmagic": true,
         "extrakey": true,
         "mousekey": true,
-        "nkro": true,
-        "rgblight": true,
-        "velocikey": true
+        "nkro": true
     },
     "indicators": {
         "caps_lock": "GP11",
@@ -31,34 +29,11 @@
         "rows": ["GP4", "GP5", "GP6", "GP7", "GP10", "GP9"]
     },
     "processor": "RP2040",
-    "rgblight": {
-        "animations": {
-            "alternating": true,
-            "breathing": true,
-            "christmas": true,
-            "knight": true,
-            "rainbow_mood": true,
-            "rainbow_swirl": true,
-            "rgb_test": true,
-            "snake": true,
-            "static_gradient": true,
-            "twinkle": true
-        },
-        "default": {
-            "animation": "rainbow_swirl",
-            "val": 127
-        },
-        "led_count": 4
-    },
     "url": "",
     "usb": {
         "device_version": "1.0.0",
-        "pid": "0x0018",
+        "pid": "0x0025",
         "vid": "0x4552"
-    },
-    "ws2812": {
-        "driver": "vendor",
-        "pin": "GP12"
     },
     "community_layouts": ["tkl_ansi", "tkl_ansi_split_bs_rshift", "tkl_ansi_tsangan", "tkl_ansi_tsangan_split_bs_rshift", "tkl_iso", "tkl_iso_split_bs_rshift", "tkl_iso_tsangan", "tkl_iso_tsangan_split_bs_rshift"],
     "layouts": {
