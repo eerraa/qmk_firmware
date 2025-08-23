@@ -564,7 +564,7 @@ void rgblight_sethsv_eeprom_helper(uint8_t hue, uint8_t sat, uint8_t val, bool w
                 // needed for rgblight_layers_write() to get the new val, since it reads rgblight_config.val
                 rgblight_config.val = val;
 #    endif
-                rgblight_set();
+                //rgblight_set(); 수정1
             }
 #endif
         }
@@ -864,10 +864,34 @@ void rgblight_wakeup(void) {
 
 void rgblight_set(void) {
     if (!rgblight_config.enable) {
+        // If the entire feature is disabled, turn all LEDs off.
         for (uint8_t i = rgblight_ranges.effect_start_pos; i < rgblight_ranges.effect_end_pos; i++) {
             rgblight_driver.set_color(rgblight_led_index(i), 0, 0, 0);
         }
+    } else if (is_static_effect(rgblight_config.mode)) {
+        // If a static effect is active, redraw it completely. This ensures
+        // that any LEDs no longer overridden by indicators will revert to the
+        // base static color.
+        if (rgblight_config.mode == RGBLIGHT_MODE_STATIC_LIGHT) {
+            rgb_t rgb = rgblight_hsv_to_rgb((hsv_t){rgblight_config.hue, rgblight_config.sat, rgblight_config.val});
+            for (uint8_t i = rgblight_ranges.effect_start_pos; i < rgblight_ranges.effect_end_pos; i++) {
+                rgblight_driver.set_color(rgblight_led_index(i), rgb.r, rgb.g, rgb.b);
+            }
+        }
+#ifdef RGBLIGHT_EFFECT_STATIC_GRADIENT
+        else if (rgblight_status.base_mode == RGBLIGHT_MODE_STATIC_GRADIENT) {
+            uint8_t delta     = rgblight_config.mode - rgblight_status.base_mode;
+            bool    direction = (delta % 2) == 0;
+            uint8_t range     = pgm_read_byte(&RGBLED_GRADIENT_RANGES[delta / 2]);
+            for (uint8_t i = 0; i < rgblight_ranges.effect_num_leds; i++) {
+                uint8_t _hue = ((uint16_t)i * (uint16_t)range) / rgblight_ranges.effect_num_leds;
+                _hue         = direction ? (rgblight_config.hue + _hue) : (rgblight_config.hue - _hue);
+                sethsv(_hue, rgblight_config.sat, rgblight_config.val, i + rgblight_ranges.effect_start_pos);
+            }
+        }
+#endif
     }
+    // For dynamic effects, this block is skipped because the timer task has already drawn the base effect.
 
 #ifdef RGBLIGHT_LAYERS
     if (rgblight_layers != NULL
@@ -881,8 +905,10 @@ void rgblight_set(void) {
     }
 #endif
 
+    // Apply keyboard-specific indicators on top of everything else.
     rgblight_indicators_kb();
-    
+
+    // Finally, send the data to the LEDs.
     rgblight_driver.flush();
 }
 
@@ -1441,6 +1467,11 @@ void rgblight_task(void) {
         rgblight_velocikey_decelerate();
     }
 #endif
+
+    // 수정1
+    if (!rgblight_status.timer_enabled) {
+        rgblight_set();
+    }
 }
 
 #ifdef VELOCIKEY_ENABLE

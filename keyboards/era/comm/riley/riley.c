@@ -1,11 +1,15 @@
 // Copyright 2025 Hyojin Bak (@eerraa)
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include "quantum.h"
 #include "riley.h"
-
+#include "rgblight.h"
+#include "eeprom.h"
 
 riley_config_t g_riley_config;
+
+// ==============================================================================
+//  EEPROM & Initialization
+// ==============================================================================
 
 static void read_riley_config_from_eeprom(riley_config_t* config) {
     eeconfig_read_kb_datablock(config, 0, sizeof(riley_config_t));
@@ -16,20 +20,13 @@ static void write_riley_config_to_eeprom(riley_config_t* config) {
 }
 
 void eeconfig_init_kb(void) {
-    // Caps Lock
-    g_riley_config.ind_caps_toggle = false;
-    g_riley_config.ind_caps_hsv = (HSV){0, 255, 255}; // Red
-
-    // Scroll Lock
-    g_riley_config.ind_scroll_toggle = false;
-    g_riley_config.ind_scroll_hsv = (HSV){170, 255, 255}; // Blue
-
-    // Num Lock
-    g_riley_config.ind_num_toggle = false;
-    g_riley_config.ind_num_hsv = (HSV){85, 255, 255}; // Green
-    
+    g_riley_config.ind_1_mode = IND_MODE_OFF;
+    g_riley_config.ind_1_hsv  = (HSV){0, 255, 255}; // Red
+    g_riley_config.ind_2_mode = IND_MODE_OFF;
+    g_riley_config.ind_2_hsv  = (HSV){170, 255, 255}; // Blue
+    g_riley_config.ind_3_mode = IND_MODE_OFF;
+    g_riley_config.ind_3_hsv  = (HSV){85, 255, 255}; // Green
     write_riley_config_to_eeprom(&g_riley_config);
-
     eeconfig_init_user();
 }
 
@@ -42,33 +39,47 @@ void matrix_init_kb(void) {
     matrix_init_user();
 }
 
+// ==============================================================================
+//  RGB Indicator Logic
+// ==============================================================================
+
+static void set_indicator_led(uint8_t index, uint8_t mode, HSV hsv, led_t led_state) {
+    bool should_light_up = false;
+    switch (mode) {
+        case IND_MODE_ON:
+            should_light_up = true;
+            break;
+        case IND_MODE_CAPS:
+            should_light_up = led_state.caps_lock;
+            break;
+        case IND_MODE_SCROLL:
+            should_light_up = led_state.scroll_lock;
+            break;
+        case IND_MODE_NUM:
+            should_light_up = led_state.num_lock;
+            break;
+        case IND_MODE_OFF:
+        default:
+            break; // should_light_up remains false
+    }
+
+    if (should_light_up) {
+        RGB rgb = hsv_to_rgb(hsv);
+        rgblight_driver.set_color(index, rgb.r, rgb.g, rgb.b);
+    }
+}
+
 bool rgblight_indicators_kb(void) {
-    if (!rgblight_is_enabled()) {
-        return true;
-    }
-
     led_t led_state = host_keyboard_led_state();
-
-    // 1. Caps Lock Indicator (LED index 0)
-    if (g_riley_config.ind_caps_toggle && led_state.caps_lock) {
-        RGB rgb = hsv_to_rgb(g_riley_config.ind_caps_hsv);
-        rgblight_driver.set_color(0, rgb.r, rgb.g, rgb.b);
-    }
-
-    // 2. Scroll Lock Indicator (LED index 1)
-    if (g_riley_config.ind_scroll_toggle && led_state.scroll_lock) {
-        RGB rgb = hsv_to_rgb(g_riley_config.ind_scroll_hsv);
-        rgblight_driver.set_color(1, rgb.r, rgb.g, rgb.b);
-    }
-
-    // 3. Num Lock Indicator (LED index 2)
-    if (g_riley_config.ind_num_toggle && led_state.num_lock) {
-        RGB rgb = hsv_to_rgb(g_riley_config.ind_num_hsv);
-        rgblight_driver.set_color(2, rgb.r, rgb.g, rgb.b);
-    }
-
+    set_indicator_led(0, g_riley_config.ind_1_mode, g_riley_config.ind_1_hsv, led_state);
+    set_indicator_led(1, g_riley_config.ind_2_mode, g_riley_config.ind_2_hsv, led_state);
+    set_indicator_led(2, g_riley_config.ind_3_mode, g_riley_config.ind_3_hsv, led_state);
     return true;
 }
+
+// ==============================================================================
+//  VIA / VIAL Integration
+// ==============================================================================
 
 #ifdef VIA_ENABLE
 void via_init_kb(void) {
@@ -78,146 +89,70 @@ void via_init_kb(void) {
         write_riley_config_to_eeprom(&g_riley_config);
     }
 }
-
-void _set_color( HSV *color, uint8_t *data ) {
+void _set_color(HSV* color, uint8_t* data) {
     color->h = data[0];
     color->s = data[1];
 }
-
-void _get_color( HSV *color, uint8_t *data ) {
+void _get_color(HSV* color, uint8_t* data) {
     data[0] = color->h;
     data[1] = color->s;
 }
 
-void via_riley_config_get_value( uint8_t *data ) {
-    uint8_t *value_id   = &data[0];
-    uint8_t *value_data = &data[1];
+void via_riley_config_get_value(uint8_t* data) {
+    uint8_t* value_id   = &data[0];
+    uint8_t* value_data = &data[1];
 
     switch (*value_id) {
-        // Caps Lock
-        case id_ind_caps_toggle: {
-            *value_data = g_riley_config.ind_caps_toggle;
-            break;
-        }
-        case id_ind_caps_brightness: {
-            *value_data = g_riley_config.ind_caps_hsv.v;
-            break;
-        }
-        case id_ind_caps_color: {
-            _get_color(&g_riley_config.ind_caps_hsv, value_data);
-            break;
-        }
+        case id_ind_1_mode: *value_data = g_riley_config.ind_1_mode; break;
+        case id_ind_1_brightness: *value_data = g_riley_config.ind_1_hsv.v; break;
+        case id_ind_1_color: _get_color(&g_riley_config.ind_1_hsv, value_data); break;
 
-        // Scroll Lock
-        case id_ind_scroll_toggle: {
-            *value_data = g_riley_config.ind_scroll_toggle;
-            break;
-        }
-        case id_ind_scroll_brightness: {
-            *value_data = g_riley_config.ind_scroll_hsv.v;
-            break;
-        }
-        case id_ind_scroll_color: {
-            _get_color(&g_riley_config.ind_scroll_hsv, value_data);
-            break;
-        }
-
-        // Num Lock
-        case id_ind_num_toggle: {
-            *value_data = g_riley_config.ind_num_toggle;
-            break;
-        }
-        case id_ind_num_brightness: {
-            *value_data = g_riley_config.ind_num_hsv.v;
-            break;
-        }
-        case id_ind_num_color: {
-            _get_color(&g_riley_config.ind_num_hsv, value_data);
-            break;
-        }
+        case id_ind_2_mode: *value_data = g_riley_config.ind_2_mode; break;
+        case id_ind_2_brightness: *value_data = g_riley_config.ind_2_hsv.v; break;
+        case id_ind_2_color: _get_color(&g_riley_config.ind_2_hsv, value_data); break;
+        
+        case id_ind_3_mode: *value_data = g_riley_config.ind_3_mode; break;
+        case id_ind_3_brightness: *value_data = g_riley_config.ind_3_hsv.v; break;
+        case id_ind_3_color: _get_color(&g_riley_config.ind_3_hsv, value_data); break;
     }
 }
 
-void via_riley_config_set_value( uint8_t *data ) {
-    uint8_t *value_id   = &data[0];
-    uint8_t *value_data = &data[1];
+void via_riley_config_set_value(uint8_t* data) {
+    uint8_t* value_id   = &data[0];
+    uint8_t* value_data = &data[1];
 
     switch (*value_id) {
-        // Caps Lock
-        case id_ind_caps_toggle: {
-            g_riley_config.ind_caps_toggle = (bool)*value_data;
-            break;
-        }
-        case id_ind_caps_brightness: {
-            g_riley_config.ind_caps_hsv.v = *value_data;
-            break;
-        }
-        case id_ind_caps_color: {
-            _set_color(&g_riley_config.ind_caps_hsv, value_data);
-            break;
-        }
+        case id_ind_1_mode: g_riley_config.ind_1_mode = *value_data; break;
+        case id_ind_1_brightness: g_riley_config.ind_1_hsv.v = *value_data; break;
+        case id_ind_1_color: _set_color(&g_riley_config.ind_1_hsv, value_data); break;
 
-        // Scroll Lock
-        case id_ind_scroll_toggle: {
-            g_riley_config.ind_scroll_toggle = (bool)*value_data;
-            break;
-        }
-        case id_ind_scroll_brightness: {
-            g_riley_config.ind_scroll_hsv.v = *value_data;
-            break;
-        }
-        case id_ind_scroll_color: {
-            _set_color(&g_riley_config.ind_scroll_hsv, value_data);
-            break;
-        }
+        case id_ind_2_mode: g_riley_config.ind_2_mode = *value_data; break;
+        case id_ind_2_brightness: g_riley_config.ind_2_hsv.v = *value_data; break;
+        case id_ind_2_color: _set_color(&g_riley_config.ind_2_hsv, value_data); break;
 
-        // Num Lock
-        case id_ind_num_toggle: {
-            g_riley_config.ind_num_toggle = (bool)*value_data;
-            break;
-        }
-        case id_ind_num_brightness: {
-            g_riley_config.ind_num_hsv.v = *value_data;
-            break;
-        }
-        case id_ind_num_color: {
-            _set_color(&g_riley_config.ind_num_hsv, value_data);
-            break;
-        }
+        case id_ind_3_mode: g_riley_config.ind_3_mode = *value_data; break;
+        case id_ind_3_brightness: g_riley_config.ind_3_hsv.v = *value_data; break;
+        case id_ind_3_color: _set_color(&g_riley_config.ind_3_hsv, value_data); break;
     }
-    
     if (rgblight_is_enabled()) {
         rgblight_mode_noeeprom(rgblight_get_mode());
     }
 }
 
-void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
-    uint8_t *command_id        = &data[0];
-    uint8_t *channel_id        = &data[1];
-    uint8_t *value_id_and_data = &data[2];
+void via_custom_value_command_kb(uint8_t* data, uint8_t length) {
+    uint8_t* command_id = &data[0];
+    uint8_t* channel_id = &data[1];
+    uint8_t* value_id_and_data = &data[2];
 
     if (*channel_id == id_custom_channel) {
         switch (*command_id) {
-            case id_custom_set_value: {
-                via_riley_config_set_value(value_id_and_data);
-                break;
-            }
-            case id_custom_get_value: {
-                via_riley_config_get_value(value_id_and_data);
-                break;
-            }
-            case id_custom_save: {
-                write_riley_config_to_eeprom(&g_riley_config);
-                break;
-            }
-            default: {
-                *command_id = id_unhandled;
-                break;
-            }
+            case id_custom_set_value: via_riley_config_set_value(value_id_and_data); break;
+            case id_custom_get_value: via_riley_config_get_value(value_id_and_data); break;
+            case id_custom_save: write_riley_config_to_eeprom(&g_riley_config); break;
+            default: *command_id = id_unhandled; break;
         }
         return;
     }
-
     *command_id = id_unhandled;
 }
-#endif
+#endif // VIA_ENABLE
