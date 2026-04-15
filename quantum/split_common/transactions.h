@@ -45,6 +45,10 @@ extern split_transaction_desc_t split_transaction_table[NUM_TOTAL_TRANSACTIONS];
 bool transactions_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]);
 void transactions_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]);
 
+#if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+bool split_rgb_matrix_sync_now(void);
+#endif
+
 void transaction_register_rpc(int8_t transaction_id, slave_callback_t callback);
 
 bool transaction_rpc_exec(int8_t transaction_id, uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer);

@@ -56,6 +56,10 @@
 #    include "process_rgb.h"
 #endif
 
+#if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+#    include "split_common/transactions.h"
+#endif
+
 #ifdef SECURE_ENABLE
 #    include "process_secure.h"
 #endif
@@ -535,6 +539,11 @@ void suspend_power_down_quantum(void) {
 #    endif
 #    if defined(RGB_MATRIX_ENABLE)
     rgb_matrix_set_suspend_state(true);
+#        if defined(RGB_MATRIX_SPLIT)
+    if (is_keyboard_master()) {
+        split_rgb_matrix_sync_now();
+    }
+#        endif
 #    endif
 
 #    ifdef OLED_ENABLE
@@ -569,6 +578,11 @@ __attribute__((weak)) void suspend_wakeup_init_quantum(void) {
 #endif
 #if defined(RGB_MATRIX_ENABLE)
     rgb_matrix_set_suspend_state(false);
+#    if defined(RGB_MATRIX_SPLIT)
+    if (is_keyboard_master()) {
+        split_rgb_matrix_sync_now();
+    }
+#    endif
 #endif
     suspend_wakeup_init_kb();
 }

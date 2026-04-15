@@ -36,10 +36,4 @@ enum tomak_custom_value_id {
     id_custom_indicator_color
 };
 
-// function declaration
-void indicator_config_set_value( uint8_t *data );
-void indicator_config_get_value( uint8_t *data );
-void indicator_config_save ( void );
-void _set_color(HSV *color, uint8_t *data);
-void _get_color(HSV *color, uint8_t *data);
 #endif

@@ -553,6 +553,13 @@ static void led_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t
 
 #if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
 
+bool split_rgb_matrix_sync_now(void) {
+    rgb_matrix_sync_t rgb_matrix_sync;
+    memcpy(&rgb_matrix_sync.rgb_matrix, &rgb_matrix_config, sizeof(rgb_config_t));
+    rgb_matrix_sync.rgb_suspend_state = rgb_matrix_get_suspend_state();
+    return transport_execute_transaction(PUT_RGB_MATRIX, &rgb_matrix_sync, sizeof(rgb_matrix_sync), NULL, 0);
+}
+
 static bool rgb_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t   last_update = 0;
     rgb_matrix_sync_t rgb_matrix_sync;

@@ -8,13 +8,15 @@
 
 #ifdef TOMAK_CONFIG_SYNC
 void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void* initiator2target_buffer, uint8_t target2initiator_buffer_size, void* target2initiator_buffer) {
+    (void)target2initiator_buffer_size;
+    (void)target2initiator_buffer;
+
     if (initiator2target_buffer_size == sizeof(g_tomak_config)) {
         memcpy(&g_tomak_config, initiator2target_buffer, sizeof(g_tomak_config));
     }
 }
 
 void keyboard_post_init_kb(void) {
-    
     transaction_register_rpc(RPC_ID_KB_CONFIG_SYNC, tomak_config_sync_handler);
     keyboard_post_init_user();
 }
@@ -51,21 +53,21 @@ void housekeeping_task_kb(void) {
 tomak_config_t g_tomak_config;
 
 static void read_tomak_config_from_eeprom(tomak_config_t* config) {
-    config->raw = eeconfig_read_kb() & 0xffffffff;
+    config->raw = eeconfig_read_kb();
 }
 
 static void write_tomak_config_to_eeprom(tomak_config_t* config) {
     eeconfig_update_kb(config->raw);
 }
 
-uint8_t increment( uint8_t value, uint8_t step, uint8_t min, uint8_t max )
+static uint8_t increment( uint8_t value, uint8_t step, uint8_t min, uint8_t max )
 {
     int16_t new_value = value;
     new_value += step;
     return MIN( MAX( new_value, min ), max );
 }
 
-uint8_t decrement( uint8_t value, uint8_t step, uint8_t min, uint8_t max )
+static uint8_t decrement( uint8_t value, uint8_t step, uint8_t min, uint8_t max )
 {
     int16_t new_value = value;
     new_value -= step;
@@ -125,19 +127,19 @@ void via_init_kb(void)
 }
 
 // Some helpers for setting/getting HSV
-void _set_color( HSV *color, uint8_t *data )
+static void _set_color( HSV *color, uint8_t *data )
 {
     color->h = data[0];
     color->s = data[1];
 }
 
-void _get_color( HSV *color, uint8_t *data )
+static void _get_color( HSV *color, uint8_t *data )
 {
     data[0] = color->h;
     data[1] = color->s;
 }
 
-void indicator_config_get_value( uint8_t *data )
+static void indicator_config_get_value( uint8_t *data )
 {
     // data = [ value_id, value_data ]
     uint8_t *value_id   = &(data[0]);
@@ -168,7 +170,7 @@ void indicator_config_get_value( uint8_t *data )
     }
 }
 
-void indicator_config_set_value( uint8_t *data )
+static void indicator_config_set_value( uint8_t *data )
 {
     // data = [ value_id, value_data ]
     uint8_t *value_id   = &(data[0]);
@@ -201,6 +203,8 @@ void indicator_config_set_value( uint8_t *data )
 
 void via_custom_value_command_kb(uint8_t *data, uint8_t length)
 {
+    (void)length;
+
     // data = [ command_id, channel_id, value_id, value_data ]
     uint8_t *command_id        = &(data[0]);
     uint8_t *channel_id        = &(data[1]);
@@ -308,4 +312,4 @@ bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
         }
     }
     return process_record_user(keycode, record);
-};
+}
