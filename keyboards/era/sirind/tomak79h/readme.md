@@ -1,7 +1,5 @@
 # Tomak79H, Hotswap ver
 
-![Tomak79H](https://i.imgur.com/yJ5n7ll.jpeg)
-
 Ergonomics Split Keyboard powered by RP2040.
 
 * Keyboard Maintainer: [ERA](https://github.com/eerraa)
