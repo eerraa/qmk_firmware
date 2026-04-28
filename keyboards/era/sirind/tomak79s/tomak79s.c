@@ -4,7 +4,32 @@
 #include "tomak79s.h"
 #include "quantum.h"
 #include "eeprom.h"
+#include "gpio.h"
 #include "transactions.h"
+#include "usb_util.h"
+#include "wait.h"
+
+#if defined(USB_VBUS_PIN) && defined(TOMAK_USB_VBUS_DEBOUNCE_MS)
+bool usb_vbus_state(void) {
+    uint16_t stable_ms = 0;
+
+    gpio_set_pin_input(USB_VBUS_PIN);
+    for (uint16_t elapsed_ms = 0; elapsed_ms < TOMAK_USB_VBUS_DEBOUNCE_MS; elapsed_ms += TOMAK_USB_VBUS_POLL_MS) {
+        wait_us(5);
+        if (gpio_read_pin(USB_VBUS_PIN)) {
+            stable_ms += TOMAK_USB_VBUS_POLL_MS;
+            if (stable_ms >= TOMAK_USB_VBUS_STABLE_MS) {
+                return true;
+            }
+        } else {
+            stable_ms = 0;
+        }
+        wait_ms(TOMAK_USB_VBUS_POLL_MS);
+    }
+
+    return false;
+}
+#endif
 
 #ifdef TOMAK_SPLIT_DIAGNOSTICS
 #    include <stddef.h>

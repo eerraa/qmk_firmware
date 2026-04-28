@@ -32,6 +32,11 @@ periodic sync. Runtime diagnostics are disabled in release builds; uncomment
 `TOMAK_SPLIT_DIAGNOSTICS` in `config.h` only for validation builds that need the
 `TOMAK_DIAG` keycode output.
 
+The firmware also debounces the USB VBUS sense pin used for split master
+detection. This avoids a fast unplug/replug on boards with slower VBUS sense
+settling being misdetected as a slave half, which can otherwise disconnect USB
+during host descriptor enumeration.
+
 See the [build environment setup](https://docs.qmk.fm/#/getting_started_build_tools) and the [make instructions](https://docs.qmk.fm/#/getting_started_make_guide) for more information. Brand new to QMK? Start with our [Complete Newbs Guide](https://docs.qmk.fm/#/newbs).
 
 ## Bootloader
