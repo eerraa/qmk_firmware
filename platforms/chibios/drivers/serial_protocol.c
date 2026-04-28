@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <ch.h>
+#include <string.h>
 
 #include "serial.h"
 #include "serial_protocol.h"
@@ -9,6 +10,58 @@
 
 static inline bool initiate_transaction(uint8_t transaction_id);
 static inline bool react_to_transaction(void);
+
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+static serial_protocol_diagnostics_t serial_protocol_diagnostics;
+
+static void serial_protocol_diagnostics_record(serial_protocol_diag_phase_t phase, uint8_t transaction_id) {
+    serial_protocol_diagnostics.last_failed_phase  = phase;
+    serial_protocol_diagnostics.last_transaction_id = transaction_id;
+
+    switch (phase) {
+        case SERIAL_PROTOCOL_DIAG_INITIATOR_INVALID_ID:
+            serial_protocol_diagnostics.initiator_invalid_id++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_INITIATOR_SEND_ID_FAILED:
+            serial_protocol_diagnostics.initiator_send_id_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_INITIATOR_RECV_HANDSHAKE_FAILED:
+            serial_protocol_diagnostics.initiator_recv_handshake_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_INITIATOR_SEND_PAYLOAD_FAILED:
+            serial_protocol_diagnostics.initiator_send_payload_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_INITIATOR_RECV_PAYLOAD_FAILED:
+            serial_protocol_diagnostics.initiator_recv_payload_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_TARGET_RECV_ID_FAILED:
+            serial_protocol_diagnostics.target_recv_id_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_TARGET_INVALID_ID:
+            serial_protocol_diagnostics.target_invalid_id++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_TARGET_SEND_HANDSHAKE_FAILED:
+            serial_protocol_diagnostics.target_send_handshake_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_TARGET_RECV_PAYLOAD_FAILED:
+            serial_protocol_diagnostics.target_recv_payload_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_TARGET_SEND_PAYLOAD_FAILED:
+            serial_protocol_diagnostics.target_send_payload_failed++;
+            break;
+        case SERIAL_PROTOCOL_DIAG_NONE:
+            break;
+    }
+}
+
+void serial_protocol_diagnostics_get(serial_protocol_diagnostics_t* diagnostics) {
+    *diagnostics = serial_protocol_diagnostics;
+}
+
+void serial_protocol_diagnostics_reset(void) {
+    memset(&serial_protocol_diagnostics, 0, sizeof(serial_protocol_diagnostics));
+}
+#endif
 
 /**
  * @brief This thread runs on the slave and responds to transactions initiated
@@ -52,11 +105,17 @@ static inline bool react_to_transaction(void) {
     uint8_t transaction_id = 0;
     /* Wait until there is a transaction for us. */
     if (unlikely(!serial_transport_receive_blocking(&transaction_id, sizeof(transaction_id)))) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_TARGET_RECV_ID_FAILED, transaction_id);
+#endif
         return false;
     }
 
     /* Sanity check that we are actually responding to a valid transaction. */
     if (unlikely(transaction_id >= NUM_TOTAL_TRANSACTIONS)) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_TARGET_INVALID_ID, transaction_id);
+#endif
         return false;
     }
 
@@ -68,12 +127,18 @@ static inline bool react_to_transaction(void) {
      to signal that the slave is ready to receive possible transaction buffers  */
     transaction_id ^= NUM_TOTAL_TRANSACTIONS;
     if (unlikely(!serial_transport_send(&transaction_id, sizeof(transaction_id)))) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_TARGET_SEND_HANDSHAKE_FAILED, transaction_id ^ NUM_TOTAL_TRANSACTIONS);
+#endif
         return false;
     }
 
     /* Receive transaction buffer from the master. If this transaction requires it.*/
     if (transaction->initiator2target_buffer_size) {
         if (unlikely(!serial_transport_receive(split_trans_initiator2target_buffer(transaction), transaction->initiator2target_buffer_size))) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+            serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_TARGET_RECV_PAYLOAD_FAILED, transaction_id ^ NUM_TOTAL_TRANSACTIONS);
+#endif
             return false;
         }
     }
@@ -86,6 +151,9 @@ static inline bool react_to_transaction(void) {
     /* Send transaction buffer to the master. If this transaction requires it. */
     if (transaction->target2initiator_buffer_size) {
         if (unlikely(!serial_transport_send(split_trans_target2initiator_buffer(transaction), transaction->target2initiator_buffer_size))) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+            serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_TARGET_SEND_PAYLOAD_FAILED, transaction_id ^ NUM_TOTAL_TRANSACTIONS);
+#endif
             return false;
         }
     }
@@ -114,6 +182,9 @@ static inline bool initiate_transaction(uint8_t transaction_id) {
     /* Sanity check that we are actually starting a valid transaction. */
     if (unlikely(transaction_id >= NUM_TOTAL_TRANSACTIONS)) {
         serial_dprintf("SPLIT: illegal transaction id\n");
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_INITIATOR_INVALID_ID, transaction_id);
+#endif
         return false;
     }
 
@@ -124,6 +195,9 @@ static inline bool initiate_transaction(uint8_t transaction_id) {
     /* Send transaction table index to the slave, which doubles as basic handshake token. */
     if (unlikely(!serial_transport_send(&transaction_id, sizeof(transaction_id)))) {
         serial_dprintf("SPLIT: sending handshake failed\n");
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_INITIATOR_SEND_ID_FAILED, transaction_id);
+#endif
         return false;
     }
 
@@ -135,6 +209,9 @@ static inline bool initiate_transaction(uint8_t transaction_id) {
      */
     if (unlikely(!serial_transport_receive(&transaction_id_shake, sizeof(transaction_id_shake)) || (transaction_id_shake != (transaction_id ^ NUM_TOTAL_TRANSACTIONS)))) {
         serial_dprintf("SPLIT: receiving handshake failed\n");
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+        serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_INITIATOR_RECV_HANDSHAKE_FAILED, transaction_id);
+#endif
         return false;
     }
 
@@ -142,6 +219,9 @@ static inline bool initiate_transaction(uint8_t transaction_id) {
     if (transaction->initiator2target_buffer_size) {
         if (unlikely(!serial_transport_send(split_trans_initiator2target_buffer(transaction), transaction->initiator2target_buffer_size))) {
             serial_dprintf("SPLIT: sending buffer failed\n");
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+            serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_INITIATOR_SEND_PAYLOAD_FAILED, transaction_id);
+#endif
             return false;
         }
     }
@@ -150,6 +230,9 @@ static inline bool initiate_transaction(uint8_t transaction_id) {
     if (transaction->target2initiator_buffer_size) {
         if (unlikely(!serial_transport_receive(split_trans_target2initiator_buffer(transaction), transaction->target2initiator_buffer_size))) {
             serial_dprintf("SPLIT: receiving buffer failed\n");
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+            serial_protocol_diagnostics_record(SERIAL_PROTOCOL_DIAG_INITIATOR_RECV_PAYLOAD_FAILED, transaction_id);
+#endif
             return false;
         }
     }

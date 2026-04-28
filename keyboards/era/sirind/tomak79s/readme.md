@@ -14,6 +14,15 @@ Flashing example for this keyboard:
 
     make era/sirind/tomak79s:default:flash
 
+## Split Port Safety
+
+The inter-half USB-C connector is not a USB data port. On affected Tomak79S
+PCBs, the D+/RX line is used as a single-wire half-duplex serial line and the
+D-/TX line is left as an input by firmware. This avoids driving the GP0/TX line
+against the other half when a normal USB-C to USB-C cable connects D- to D-.
+Firmware cannot fully protect against plugging this inter-half port into a PC
+or other USB host.
+
 See the [build environment setup](https://docs.qmk.fm/#/getting_started_build_tools) and the [make instructions](https://docs.qmk.fm/#/getting_started_make_guide) for more information. Brand new to QMK? Start with our [Complete Newbs Guide](https://docs.qmk.fm/#/newbs).
 
 ## Bootloader

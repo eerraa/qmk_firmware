@@ -41,6 +41,28 @@ void transport_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]);
 
 bool transport_execute_transaction(int8_t id, const void *initiator2target_buf, uint16_t initiator2target_length, void *target2initiator_buf, uint16_t target2initiator_length);
 
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+typedef struct {
+    uint32_t transactions;
+    uint32_t success;
+    uint32_t failed;
+    uint32_t consecutive_failed;
+    uint32_t max_consecutive_failed;
+    uint32_t elapsed_ms_total;
+    uint32_t elapsed_ms_max;
+    int8_t   last_transaction_id;
+    uint16_t last_initiator2target_length;
+    uint16_t last_target2initiator_length;
+    uint16_t matrix_initiator2target_length_max;
+    uint16_t matrix_target2initiator_length_max;
+    uint16_t matrix_initiator2target_length_last;
+    uint16_t matrix_target2initiator_length_last;
+} split_transport_diagnostics_t;
+
+void split_transport_diagnostics_get(split_transport_diagnostics_t *diagnostics);
+void split_transport_diagnostics_reset(void);
+#endif
+
 #ifdef ENCODER_ENABLE
 #    include "encoder.h"
 #endif // ENCODER_ENABLE
@@ -95,6 +117,71 @@ typedef struct _rgb_matrix_sync_t {
     bool         rgb_suspend_state;
 } rgb_matrix_sync_t;
 #endif // defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+
+#ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
+typedef struct __attribute__((packed)) _tomak_split_fast_m2s_t {
+    uint8_t checksum;
+    struct __attribute__((packed)) {
+#    ifdef SPLIT_TRANSPORT_MIRROR
+        matrix_row_t master_matrix[(MATRIX_ROWS) / 2];
+#    endif
+    } payload;
+} tomak_split_fast_m2s_t;
+
+typedef struct __attribute__((packed)) _tomak_split_fast_s2m_t {
+    uint8_t checksum;
+    uint8_t status;
+    struct __attribute__((packed)) {
+        matrix_row_t slave_matrix[(MATRIX_ROWS) / 2];
+    } payload;
+} tomak_split_fast_s2m_t;
+
+typedef struct __attribute__((packed)) _tomak_split_slow_m2s_t {
+    uint8_t checksum;
+    uint8_t magic;
+    struct __attribute__((packed)) {
+#    ifndef DISABLE_SYNC_TIMER
+        uint32_t sync_timer;
+#    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+        layer_state_t layer_state;
+        layer_state_t default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+        uint8_t led_state;
+#    endif
+#    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+        uint8_t rgb_matrix_raw[sizeof(uint64_t)];
+        uint8_t rgb_suspend_state;
+#    endif
+    } payload;
+} tomak_split_slow_m2s_t;
+
+typedef struct __attribute__((packed)) _tomak_split_slow_s2m_t {
+    uint8_t checksum;
+    uint8_t status;
+} tomak_split_slow_s2m_t;
+
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+typedef struct {
+    uint32_t success;
+    uint32_t transport_failed;
+    uint32_t bad_s2m_crc;
+    uint32_t bad_s2m_status;
+    uint32_t bad_m2s_crc;
+    uint32_t retry_attempted;
+    uint32_t retry_recovered;
+    uint32_t retry_unrecovered;
+    uint32_t slow_success;
+    uint32_t slow_attempted;
+    uint32_t slow_skipped;
+    uint8_t  last_s2m_status;
+} tomak_split_custom_diagnostics_t;
+
+void tomak_split_custom_diagnostics_get(tomak_split_custom_diagnostics_t *diagnostics);
+void tomak_split_custom_diagnostics_reset(void);
+#    endif
+#endif
 
 #ifdef SPLIT_MODS_ENABLE
 typedef struct _split_mods_sync_t {
@@ -154,6 +241,13 @@ typedef struct _split_shared_memory_t {
 #endif // USE_I2C
 
     split_slave_matrix_sync_t smatrix;
+
+#ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
+    tomak_split_fast_m2s_t tomak_fast_m2s;
+    tomak_split_fast_s2m_t tomak_fast_s2m;
+    tomak_split_slow_m2s_t tomak_slow_m2s;
+    tomak_split_slow_s2m_t tomak_slow_s2m;
+#endif
 
 #ifdef SPLIT_TRANSPORT_MIRROR
     split_master_matrix_sync_t mmatrix;

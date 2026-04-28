@@ -6,6 +6,78 @@
 #include "eeprom.h"
 #include "transactions.h"
 
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+#    include <stddef.h>
+#    include <stdio.h>
+#    include "send_string.h"
+#    include "serial_protocol.h"
+#    include "serial_usart.h"
+#    include "split_util.h"
+#    include "transport.h"
+
+static uint32_t tomak_config_sync_success;
+static uint32_t tomak_config_sync_failed;
+
+#ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
+#    define TOMAK_SPLIT_TRANSPORT_NAME "custom"
+#else
+#    define TOMAK_SPLIT_TRANSPORT_NAME "qmk"
+#endif
+
+static void tomak_send_split_diagnostics(void) {
+    split_transport_diagnostics_t diagnostics;
+    serial_protocol_diagnostics_t serial_diagnostics;
+    split_transport_diagnostics_get(&diagnostics);
+    serial_protocol_diagnostics_get(&serial_diagnostics);
+
+    uint32_t avg_ms = diagnostics.transactions ? diagnostics.elapsed_ms_total / diagnostics.transactions : 0;
+    char     line[192];
+
+    snprintf(line, sizeof(line), "tomak79h split role=%c%c conn=%u transport=%s speed=%lu timeout=%u\r\n", is_keyboard_master() ? 'M' : 'S', is_keyboard_left() ? 'L' : 'R', is_transport_connected() ? 1 : 0, TOMAK_SPLIT_TRANSPORT_NAME, (unsigned long)SERIAL_USART_SPEED, SERIAL_USART_TIMEOUT);
+    send_string(line);
+    snprintf(line, sizeof(line), "tx total=%lu ok=%lu fail=%lu cf=%lu maxcf=%lu avgms=%lu maxms=%lu\r\n", (unsigned long)diagnostics.transactions, (unsigned long)diagnostics.success, (unsigned long)diagnostics.failed, (unsigned long)diagnostics.consecutive_failed, (unsigned long)diagnostics.max_consecutive_failed, (unsigned long)avg_ms, (unsigned long)diagnostics.elapsed_ms_max);
+    send_string(line);
+    snprintf(line, sizeof(line), "ser i inv=%lu sid=%lu rh=%lu sp=%lu rp=%lu\r\n", (unsigned long)serial_diagnostics.initiator_invalid_id, (unsigned long)serial_diagnostics.initiator_send_id_failed, (unsigned long)serial_diagnostics.initiator_recv_handshake_failed, (unsigned long)serial_diagnostics.initiator_send_payload_failed, (unsigned long)serial_diagnostics.initiator_recv_payload_failed);
+    send_string(line);
+    snprintf(line, sizeof(line), "ser t rid=%lu inv=%lu sh=%lu rp=%lu sp=%lu last=%u/%u\r\n", (unsigned long)serial_diagnostics.target_recv_id_failed, (unsigned long)serial_diagnostics.target_invalid_id, (unsigned long)serial_diagnostics.target_send_handshake_failed, (unsigned long)serial_diagnostics.target_recv_payload_failed, (unsigned long)serial_diagnostics.target_send_payload_failed, serial_diagnostics.last_failed_phase, serial_diagnostics.last_transaction_id);
+    send_string(line);
+    snprintf(line, sizeof(line), "matrix last=%u/%u max=%u/%u lastid=%d lastlen=%u/%u\r\n", diagnostics.matrix_initiator2target_length_last, diagnostics.matrix_target2initiator_length_last, diagnostics.matrix_initiator2target_length_max, diagnostics.matrix_target2initiator_length_max, diagnostics.last_transaction_id, diagnostics.last_initiator2target_length, diagnostics.last_target2initiator_length);
+    send_string(line);
+    snprintf(line, sizeof(line), "rpc config ok=%lu fail=%lu\r\n", (unsigned long)tomak_config_sync_success, (unsigned long)tomak_config_sync_failed);
+    send_string(line);
+#ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
+    snprintf(line, sizeof(line), "payload size fast=%u/%u slow=%u/%u row=%u rows=%u layer=%u rgb=%u\r\n", (unsigned)sizeof(tomak_split_fast_m2s_t), (unsigned)sizeof(tomak_split_fast_s2m_t), (unsigned)sizeof(tomak_split_slow_m2s_t), (unsigned)sizeof(tomak_split_slow_s2m_t), (unsigned)sizeof(matrix_row_t), (unsigned)(MATRIX_ROWS / 2), (unsigned)sizeof(layer_state_t), (unsigned)sizeof(rgb_config_t));
+    send_string(line);
+    snprintf(line, sizeof(line), "slow offset payload=%u timer=%u layer=%u led=%u rgbraw=%u rgbsus=%u\r\n", (unsigned)offsetof(tomak_split_slow_m2s_t, payload), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.sync_timer), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.layer_state), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.led_state), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_matrix_raw), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_suspend_state));
+    send_string(line);
+    tomak_split_custom_diagnostics_t custom_diagnostics;
+    tomak_split_custom_diagnostics_get(&custom_diagnostics);
+    snprintf(line, sizeof(line), "custom ok=%lu tfail=%lu s2crc=%lu stat=%lu m2crc=%lu retry=%lu rec=%lu unrec=%lu lastst=%u\r\n", (unsigned long)custom_diagnostics.success, (unsigned long)custom_diagnostics.transport_failed, (unsigned long)custom_diagnostics.bad_s2m_crc, (unsigned long)custom_diagnostics.bad_s2m_status, (unsigned long)custom_diagnostics.bad_m2s_crc, (unsigned long)custom_diagnostics.retry_attempted, (unsigned long)custom_diagnostics.retry_recovered, (unsigned long)custom_diagnostics.retry_unrecovered, custom_diagnostics.last_s2m_status);
+    send_string(line);
+    snprintf(line, sizeof(line), "slow ok=%lu try=%lu skip=%lu\r\n", (unsigned long)custom_diagnostics.slow_success, (unsigned long)custom_diagnostics.slow_attempted, (unsigned long)custom_diagnostics.slow_skipped);
+    send_string(line);
+#endif
+}
+#endif
+
+#ifdef TOMAK_SPLIT_SAFE_SINGLE_WIRE
+#    ifdef SERIAL_USART_FULL_DUPLEX
+#        error "Tomak79H split USB-C wiring must not use full-duplex serial."
+#    endif
+#    if SERIAL_USART_TX_PIN != GP1
+#        error "Tomak79H split serial must use GP1/RX/D+ as the single-wire half-duplex line."
+#    endif
+
+static void tomak79h_disable_unused_split_tx_pin(void) {
+    palSetLineMode(TOMAK_SPLIT_UNUSED_TX_PIN, PAL_MODE_INPUT_ANALOG);
+}
+
+void keyboard_pre_init_kb(void) {
+    tomak79h_disable_unused_split_tx_pin();
+    keyboard_pre_init_user();
+}
+#endif
+
 #ifdef TOMAK_CONFIG_SYNC
 void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void* initiator2target_buffer, uint8_t target2initiator_buffer_size, void* target2initiator_buffer) {
     (void)target2initiator_buffer_size;
@@ -19,6 +91,9 @@ void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void*
 void keyboard_post_init_kb(void) {
     transaction_register_rpc(RPC_ID_KB_CONFIG_SYNC, tomak_config_sync_handler);
     keyboard_post_init_user();
+#ifdef TOMAK_SPLIT_SAFE_SINGLE_WIRE
+    tomak79h_disable_unused_split_tx_pin();
+#endif
 }
 
 void housekeeping_task_kb(void) {
@@ -40,7 +115,15 @@ void housekeeping_task_kb(void) {
 
         // Perform the sync if requested.
         if (needs_sync) {
-            if (transaction_rpc_send(RPC_ID_KB_CONFIG_SYNC, sizeof(g_tomak_config), &g_tomak_config)) {
+            bool sync_ok = transaction_rpc_send(RPC_ID_KB_CONFIG_SYNC, sizeof(g_tomak_config), &g_tomak_config);
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+            if (sync_ok) {
+                tomak_config_sync_success++;
+            } else {
+                tomak_config_sync_failed++;
+            }
+#endif
+            if (sync_ok) {
                 last_sync = timer_read32();
             }
         }
@@ -104,6 +187,18 @@ bool rgb_matrix_indicators_kb(void) {
     }
     
     return true;
+}
+
+bool process_record_kb(uint16_t keycode, keyrecord_t *record) {
+#ifdef TOMAK_SPLIT_DIAGNOSTICS
+    if (keycode == TOMAK_DIAG) {
+        if (record->event.pressed) {
+            tomak_send_split_diagnostics();
+        }
+        return false;
+    }
+#endif
+    return process_record_user(keycode, record);
 }
 
 #ifdef VIA_ENABLE

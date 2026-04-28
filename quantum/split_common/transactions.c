@@ -81,6 +81,12 @@
 
 #define trans_initiator2target_cb(cb) {0, 0, 0, 0, cb}
 
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+#    define TOMAK_SPLIT_LEGACY_HANDLER_UNUSED __attribute__((unused))
+#else
+#    define TOMAK_SPLIT_LEGACY_HANDLER_UNUSED
+#endif
+
 #define transport_write(id, data, length) transport_execute_transaction(id, data, length, NULL, 0)
 #define transport_read(id, data, length) transport_execute_transaction(id, NULL, 0, data, length)
 #define transport_exec(id) transport_execute_transaction(id, NULL, 0, NULL, 0)
@@ -91,10 +97,15 @@ void slave_rpc_info_callback(uint8_t initiator2target_buffer_size, const void *i
 void slave_rpc_exec_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer);
 #endif // defined(SPLIT_TRANSACTION_RPC)
 
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+void tomak_split_fast_slave_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer);
+void tomak_split_slow_slave_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer);
+#endif
+
 ////////////////////////////////////////////////////
 // Helpers
 
-static bool transaction_handler_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[], const char *prefix, bool (*handler)(matrix_row_t master_matrix[], matrix_row_t slave_matrix[])) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool transaction_handler_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[], const char *prefix, bool (*handler)(matrix_row_t master_matrix[], matrix_row_t slave_matrix[])) {
     int num_retries = is_transport_connected() ? 10 : 1;
     for (int iter = 1; iter <= num_retries; ++iter) {
         if (iter > 1) {
@@ -175,7 +186,7 @@ inline static bool send_if_data_mismatch(int8_t trans_id, uint32_t *last_update,
 ////////////////////////////////////////////////////
 // Slave matrix
 
-static bool slave_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool slave_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t     last_update                    = 0;
     static matrix_row_t last_matrix[(MATRIX_ROWS) / 2] = {0}; // last successfully-read matrix, so we can replicate if there are checksum errors
     matrix_row_t        temp_matrix[(MATRIX_ROWS) / 2];       // holding area while we test whether or not checksum is correct
@@ -190,7 +201,7 @@ static bool slave_matrix_handlers_master(matrix_row_t master_matrix[], matrix_ro
     return okay;
 }
 
-static void slave_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void slave_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     memcpy(split_shmem->smatrix.matrix, slave_matrix, sizeof(split_shmem->smatrix.matrix));
     split_shmem->smatrix.checksum = crc8(split_shmem->smatrix.matrix, sizeof(split_shmem->smatrix.matrix));
 }
@@ -208,12 +219,12 @@ static void slave_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row
 
 #ifdef SPLIT_TRANSPORT_MIRROR
 
-static bool master_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool master_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t last_update = 0;
     return send_if_data_mismatch(PUT_MASTER_MATRIX, &last_update, master_matrix, split_shmem->mmatrix.matrix, sizeof(split_shmem->mmatrix.matrix));
 }
 
-static void master_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void master_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     // Always copy to the master matrix
     memcpy(master_matrix, split_shmem->mmatrix.matrix, sizeof(split_shmem->mmatrix.matrix));
 }
@@ -293,7 +304,7 @@ static void encoder_handlers_slave_drain(uint8_t initiator2target_buffer_size, c
 
 #ifndef DISABLE_SYNC_TIMER
 
-static bool sync_timer_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool sync_timer_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t last_update = 0;
 
     bool okay = true;
@@ -307,7 +318,7 @@ static bool sync_timer_handlers_master(matrix_row_t master_matrix[], matrix_row_
     return okay;
 }
 
-static void sync_timer_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void sync_timer_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t last_sync_timer = 0;
     if (last_sync_timer != split_shmem->sync_timer) {
         last_sync_timer = split_shmem->sync_timer;
@@ -332,7 +343,7 @@ static void sync_timer_handlers_slave(matrix_row_t master_matrix[], matrix_row_t
 
 #if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
 
-static bool layer_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool layer_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t last_layer_state_update         = 0;
     static uint32_t last_default_layer_state_update = 0;
 
@@ -343,7 +354,7 @@ static bool layer_state_handlers_master(matrix_row_t master_matrix[], matrix_row
     return okay;
 }
 
-static void layer_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void layer_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     layer_state         = split_shmem->layers.layer_state;
     default_layer_state = split_shmem->layers.default_layer_state;
 }
@@ -369,13 +380,13 @@ static void layer_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_
 
 #ifdef SPLIT_LED_STATE_ENABLE
 
-static bool led_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool led_state_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t last_update = 0;
     uint8_t         led_state   = host_keyboard_leds();
     return send_if_data_mismatch(PUT_LED_STATE, &last_update, &led_state, &split_shmem->led_state, sizeof(led_state));
 }
 
-static void led_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void led_state_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     void set_split_host_keyboard_leds(uint8_t led_state);
     set_split_host_keyboard_leds(split_shmem->led_state);
 }
@@ -571,7 +582,7 @@ static void led_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t
 
 #if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
 
-static bool rgb_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED bool rgb_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     static uint32_t   last_update = 0;
     rgb_matrix_sync_t rgb_matrix_sync;
     memcpy(&rgb_matrix_sync.rgb_matrix, &rgb_matrix_config, sizeof(rgb_config_t));
@@ -579,7 +590,7 @@ static bool rgb_matrix_handlers_master(matrix_row_t master_matrix[], matrix_row_
     return send_if_data_mismatch(PUT_RGB_MATRIX, &last_update, &rgb_matrix_sync, &split_shmem->rgb_matrix_sync, sizeof(rgb_matrix_sync));
 }
 
-static void rgb_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+static TOMAK_SPLIT_LEGACY_HANDLER_UNUSED void rgb_matrix_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
     split_shared_memory_lock();
     memcpy(&rgb_matrix_config, &split_shmem->rgb_matrix_sync.rgb_matrix, sizeof(rgb_config_t));
     bool rgb_suspend_state = split_shmem->rgb_matrix_sync.rgb_suspend_state;
@@ -912,6 +923,307 @@ static void detected_os_handlers_slave(matrix_row_t master_matrix[], matrix_row_
 #endif // defined(OS_DETECTION_ENABLE) && defined(SPLIT_DETECTED_OS_ENABLE)
 
 ////////////////////////////////////////////////////
+// TOMAK custom transport
+
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+
+#    define TOMAK_SPLIT_STATUS_OK 0
+#    define TOMAK_SPLIT_STATUS_BAD_M2S_CRC 1
+#    define TOMAK_SPLIT_SLOW_MAGIC 0x54
+
+#    ifndef TOMAK_SPLIT_CUSTOM_RETRIES
+#        define TOMAK_SPLIT_CUSTOM_RETRIES 0
+#    endif
+#    ifndef TOMAK_SPLIT_CUSTOM_STARTUP_DEFER_MS
+#        define TOMAK_SPLIT_CUSTOM_STARTUP_DEFER_MS 0
+#    endif
+#    ifndef TOMAK_SPLIT_CUSTOM_STARTUP_RETRIES
+#        define TOMAK_SPLIT_CUSTOM_STARTUP_RETRIES TOMAK_SPLIT_CUSTOM_RETRIES
+#    endif
+#    ifndef TOMAK_SPLIT_CUSTOM_STARTUP_RETRY_MS
+#        define TOMAK_SPLIT_CUSTOM_STARTUP_RETRY_MS 0
+#    endif
+
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+static tomak_split_custom_diagnostics_t tomak_split_custom_diagnostics;
+
+void tomak_split_custom_diagnostics_get(tomak_split_custom_diagnostics_t *diagnostics) {
+    *diagnostics = tomak_split_custom_diagnostics;
+}
+
+void tomak_split_custom_diagnostics_reset(void) {
+    memset(&tomak_split_custom_diagnostics, 0, sizeof(tomak_split_custom_diagnostics));
+}
+#    endif
+
+static uint8_t tomak_split_packet_crc(const void *packet, size_t packet_size) {
+    return crc8(((const uint8_t *)packet) + 1, packet_size - 1);
+}
+
+static void tomak_split_fast_prepare_m2s(tomak_split_fast_m2s_t *packet, matrix_row_t master_matrix[]) {
+    memset(packet, 0, sizeof(*packet));
+#    ifdef SPLIT_TRANSPORT_MIRROR
+    memcpy(packet->payload.master_matrix, master_matrix, sizeof(packet->payload.master_matrix));
+#    endif
+    packet->checksum = tomak_split_packet_crc(packet, sizeof(*packet));
+}
+
+static void tomak_split_slow_prepare_m2s(tomak_split_slow_m2s_t *packet) {
+    memset(packet, 0, sizeof(*packet));
+    packet->magic = TOMAK_SPLIT_SLOW_MAGIC;
+#    ifndef DISABLE_SYNC_TIMER
+    packet->payload.sync_timer = sync_timer_read32() + SYNC_TIMER_OFFSET;
+#    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+    packet->payload.layer_state         = layer_state;
+    packet->payload.default_layer_state = default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+    packet->payload.led_state = host_keyboard_leds();
+#    endif
+#    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+    memcpy(packet->payload.rgb_matrix_raw, &rgb_matrix_config.raw, sizeof(packet->payload.rgb_matrix_raw));
+    packet->payload.rgb_suspend_state = rgb_matrix_get_suspend_state();
+#    endif
+    packet->checksum = tomak_split_packet_crc(packet, sizeof(*packet));
+}
+
+static bool tomak_split_fast_execute(tomak_split_fast_m2s_t *m2s, tomak_split_fast_s2m_t *s2m) {
+    bool okay = transport_execute_transaction(TOMAK_SPLIT_FAST_SYNC, m2s, sizeof(*m2s), s2m, sizeof(*s2m));
+    if (!okay) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.transport_failed++;
+#    endif
+        return false;
+    }
+
+    if (s2m->checksum != tomak_split_packet_crc(s2m, sizeof(*s2m))) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.bad_s2m_crc++;
+#    endif
+        return false;
+    }
+
+    if (s2m->status != TOMAK_SPLIT_STATUS_OK) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.bad_s2m_status++;
+        tomak_split_custom_diagnostics.last_s2m_status = s2m->status;
+        if (s2m->status == TOMAK_SPLIT_STATUS_BAD_M2S_CRC) {
+            tomak_split_custom_diagnostics.bad_m2s_crc++;
+        }
+#    endif
+        return false;
+    }
+
+    return true;
+}
+
+static bool tomak_split_slow_execute(tomak_split_slow_m2s_t *m2s) {
+    tomak_split_slow_s2m_t s2m;
+    bool                  okay = transport_execute_transaction(TOMAK_SPLIT_SLOW_SYNC, m2s, sizeof(*m2s), &s2m, sizeof(s2m));
+    if (!okay) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.transport_failed++;
+#    endif
+        return false;
+    }
+
+    if (s2m.checksum != tomak_split_packet_crc(&s2m, sizeof(s2m))) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.bad_s2m_crc++;
+#    endif
+        return false;
+    }
+
+    if (s2m.status != TOMAK_SPLIT_STATUS_OK) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.bad_s2m_status++;
+        tomak_split_custom_diagnostics.last_s2m_status = s2m.status;
+        if (s2m.status == TOMAK_SPLIT_STATUS_BAD_M2S_CRC) {
+            tomak_split_custom_diagnostics.bad_m2s_crc++;
+        }
+#    endif
+        return false;
+    }
+
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+    tomak_split_custom_diagnostics.last_s2m_status = s2m.status;
+#    endif
+    return true;
+}
+
+static bool tomak_split_fast_handlers_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+    static matrix_row_t last_slave_matrix[(MATRIX_ROWS) / 2] = {0};
+
+    tomak_split_fast_m2s_t m2s;
+    tomak_split_fast_s2m_t s2m;
+
+    tomak_split_fast_prepare_m2s(&m2s, master_matrix);
+    bool    okay       = tomak_split_fast_execute(&m2s, &s2m);
+    bool    retried    = false;
+    uint8_t retry_limit = TOMAK_SPLIT_CUSTOM_RETRIES;
+
+    if (timer_read32() < TOMAK_SPLIT_CUSTOM_STARTUP_RETRY_MS && TOMAK_SPLIT_CUSTOM_STARTUP_RETRIES > retry_limit) {
+        retry_limit = TOMAK_SPLIT_CUSTOM_STARTUP_RETRIES;
+    }
+
+    for (uint8_t retry = 0; !okay && retry < retry_limit; retry++) {
+        retried = true;
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.retry_attempted++;
+#    endif
+        okay = tomak_split_fast_execute(&m2s, &s2m);
+    }
+
+    if (okay) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.success++;
+        tomak_split_custom_diagnostics.last_s2m_status = s2m.status;
+        if (retried) {
+            tomak_split_custom_diagnostics.retry_recovered++;
+        }
+#    endif
+        memcpy(last_slave_matrix, s2m.payload.slave_matrix, sizeof(last_slave_matrix));
+    } else if (retried) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.retry_unrecovered++;
+#    endif
+    }
+    memcpy(slave_matrix, last_slave_matrix, sizeof(last_slave_matrix));
+    return okay;
+}
+
+static bool tomak_split_slow_dirty(const tomak_split_slow_m2s_t *packet, const tomak_split_slow_m2s_t *last_packet) {
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+    if (packet->payload.layer_state != last_packet->payload.layer_state || packet->payload.default_layer_state != last_packet->payload.default_layer_state) {
+        return true;
+    }
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+    if (packet->payload.led_state != last_packet->payload.led_state) {
+        return true;
+    }
+#    endif
+#    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+    if (memcmp(packet->payload.rgb_matrix_raw, last_packet->payload.rgb_matrix_raw, sizeof(packet->payload.rgb_matrix_raw)) || packet->payload.rgb_suspend_state != last_packet->payload.rgb_suspend_state) {
+        return true;
+    }
+#    endif
+    return false;
+}
+
+static bool tomak_split_slow_handlers_master(void) {
+    static tomak_split_slow_m2s_t last_packet;
+    static uint32_t               last_update = 0;
+    static bool                   synced      = false;
+
+    tomak_split_slow_m2s_t packet;
+    tomak_split_slow_prepare_m2s(&packet);
+
+    bool should_sync = !synced || timer_elapsed32(last_update) >= FORCED_SYNC_THROTTLE_MS || tomak_split_slow_dirty(&packet, &last_packet);
+    if (!should_sync) {
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.slow_skipped++;
+#    endif
+        return true;
+    }
+
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+    tomak_split_custom_diagnostics.slow_attempted++;
+#    endif
+    bool okay = tomak_split_slow_execute(&packet);
+    if (okay) {
+        last_packet = packet;
+        last_update = timer_read32();
+        synced      = true;
+#    ifdef TOMAK_SPLIT_DIAGNOSTICS
+        tomak_split_custom_diagnostics.slow_success++;
+#    endif
+    }
+    return okay;
+}
+
+static void tomak_split_fast_prepare_s2m(matrix_row_t slave_matrix[]) {
+    tomak_split_fast_s2m_t *packet = &split_shmem->tomak_fast_s2m;
+    memset(packet, 0, sizeof(*packet));
+    packet->status = TOMAK_SPLIT_STATUS_OK;
+    memcpy(packet->payload.slave_matrix, slave_matrix, sizeof(packet->payload.slave_matrix));
+    packet->checksum = tomak_split_packet_crc(packet, sizeof(*packet));
+}
+
+static void tomak_split_fast_handlers_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+    split_shared_memory_lock();
+
+    const tomak_split_fast_m2s_t *packet = &split_shmem->tomak_fast_m2s;
+    if (packet->checksum == tomak_split_packet_crc(packet, sizeof(*packet))) {
+#    ifdef SPLIT_TRANSPORT_MIRROR
+        memcpy(master_matrix, packet->payload.master_matrix, sizeof(packet->payload.master_matrix));
+#    endif
+    }
+
+    tomak_split_fast_prepare_s2m(slave_matrix);
+    split_shared_memory_unlock();
+}
+
+static void tomak_split_slow_handlers_slave(void) {
+    static uint32_t last_sync_timer = 0;
+
+    split_shared_memory_lock();
+    const tomak_split_slow_m2s_t *packet = &split_shmem->tomak_slow_m2s;
+    if (packet->magic == TOMAK_SPLIT_SLOW_MAGIC && packet->checksum == tomak_split_packet_crc(packet, sizeof(*packet))) {
+#    ifndef DISABLE_SYNC_TIMER
+        if (packet->payload.sync_timer != last_sync_timer) {
+            last_sync_timer = packet->payload.sync_timer;
+            sync_timer_update(last_sync_timer);
+        }
+#    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+        layer_state         = packet->payload.layer_state;
+        default_layer_state = packet->payload.default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+        void set_split_host_keyboard_leds(uint8_t led_state);
+        set_split_host_keyboard_leds(packet->payload.led_state);
+#    endif
+#    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
+        memcpy(&rgb_matrix_config.raw, packet->payload.rgb_matrix_raw, sizeof(packet->payload.rgb_matrix_raw));
+        rgb_matrix_set_suspend_state(packet->payload.rgb_suspend_state);
+#    endif
+    }
+    split_shared_memory_unlock();
+}
+
+void tomak_split_fast_slave_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer) {
+    (void)initiator2target_buffer_size;
+    (void)target2initiator_buffer_size;
+
+    const tomak_split_fast_m2s_t *m2s = initiator2target_buffer;
+    tomak_split_fast_s2m_t       *s2m = target2initiator_buffer;
+
+    s2m->status = TOMAK_SPLIT_STATUS_OK;
+    if (m2s->checksum != tomak_split_packet_crc(m2s, sizeof(*m2s))) {
+        s2m->status = TOMAK_SPLIT_STATUS_BAD_M2S_CRC;
+    }
+    s2m->checksum = tomak_split_packet_crc(s2m, sizeof(*s2m));
+}
+
+void tomak_split_slow_slave_callback(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer) {
+    (void)initiator2target_buffer_size;
+
+    const tomak_split_slow_m2s_t *m2s = initiator2target_buffer;
+    tomak_split_slow_s2m_t       *s2m = target2initiator_buffer;
+
+    memset(s2m, 0, target2initiator_buffer_size);
+    s2m->status = TOMAK_SPLIT_STATUS_OK;
+    if (m2s->magic != TOMAK_SPLIT_SLOW_MAGIC || m2s->checksum != tomak_split_packet_crc(m2s, sizeof(*m2s))) {
+        s2m->status = TOMAK_SPLIT_STATUS_BAD_M2S_CRC;
+    }
+    s2m->checksum = tomak_split_packet_crc(s2m, sizeof(*s2m));
+}
+
+#endif
+
+////////////////////////////////////////////////////
 
 split_transaction_desc_t split_transaction_table[NUM_TOTAL_TRANSACTIONS] = {
     // Set defaults
@@ -949,9 +1261,24 @@ split_transaction_desc_t split_transaction_table[NUM_TOTAL_TRANSACTIONS] = {
     [EXECUTE_RPC]       = trans_initiator2target_initializer_cb(rpc_info.payload.transaction_id, slave_rpc_exec_callback),
     [GET_RPC_RESP_DATA] = trans_target2initiator_initializer(rpc_s2m_buffer),
 #endif // defined(SPLIT_TRANSACTION_RPC)
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+    [TOMAK_SPLIT_FAST_SYNC] = {sizeof_member(split_shared_memory_t, tomak_fast_m2s), offsetof(split_shared_memory_t, tomak_fast_m2s), sizeof_member(split_shared_memory_t, tomak_fast_s2m), offsetof(split_shared_memory_t, tomak_fast_s2m), tomak_split_fast_slave_callback},
+    [TOMAK_SPLIT_SLOW_SYNC] = {sizeof_member(split_shared_memory_t, tomak_slow_m2s), offsetof(split_shared_memory_t, tomak_slow_m2s), sizeof_member(split_shared_memory_t, tomak_slow_s2m), offsetof(split_shared_memory_t, tomak_slow_s2m), tomak_split_slow_slave_callback},
+#endif
 };
 
 bool transactions_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+    if (timer_read32() < TOMAK_SPLIT_CUSTOM_STARTUP_DEFER_MS) {
+        return true;
+    }
+
+    bool okay = tomak_split_fast_handlers_master(master_matrix, slave_matrix);
+    if (okay) {
+        okay = tomak_split_slow_handlers_master();
+    }
+    return okay;
+#else
     TRANSACTIONS_SLAVE_MATRIX_MASTER();
     TRANSACTIONS_MASTER_MATRIX_MASTER();
     TRANSACTIONS_ENCODERS_MASTER();
@@ -972,9 +1299,14 @@ bool transactions_master(matrix_row_t master_matrix[], matrix_row_t slave_matrix
     TRANSACTIONS_ACTIVITY_MASTER();
     TRANSACTIONS_DETECTED_OS_MASTER();
     return true;
+#endif
 }
 
 void transactions_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[]) {
+#if defined(TOMAK_SPLIT_CUSTOM_TRANSPORT)
+    tomak_split_fast_handlers_slave(master_matrix, slave_matrix);
+    tomak_split_slow_handlers_slave();
+#else
     TRANSACTIONS_SLAVE_MATRIX_SLAVE();
     TRANSACTIONS_MASTER_MATRIX_SLAVE();
     TRANSACTIONS_ENCODERS_SLAVE();
@@ -994,6 +1326,7 @@ void transactions_slave(matrix_row_t master_matrix[], matrix_row_t slave_matrix[
     TRANSACTIONS_HAPTIC_SLAVE();
     TRANSACTIONS_ACTIVITY_SLAVE();
     TRANSACTIONS_DETECTED_OS_SLAVE();
+#endif
 }
 
 #if defined(SPLIT_TRANSACTION_RPC)

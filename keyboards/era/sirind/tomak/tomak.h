@@ -13,7 +13,8 @@ enum tomak_keycodes {
     IN_HUEI,             // indicator hue increase
     IN_HUED,             // indicator hue decrease
     IN_SATI,             // indicator saturation increase
-    IN_SATD              // indicator saturation decrease
+    IN_SATD,             // indicator saturation decrease
+    TOMAK_DIAG           // type split transport diagnostics
 };
 
 typedef union {

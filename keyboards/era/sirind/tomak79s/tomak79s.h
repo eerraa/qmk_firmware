@@ -5,6 +5,10 @@
 
 #include "quantum.h"
 
+enum tomak_keycodes {
+    TOMAK_DIAG = QK_KB_0 // type split transport diagnostics
+};
+
 typedef union {
     uint32_t raw;
     struct {
