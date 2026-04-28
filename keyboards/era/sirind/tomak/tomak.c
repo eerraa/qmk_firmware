@@ -8,6 +8,7 @@
 #include "transactions.h"
 #include "usb_util.h"
 #include "wait.h"
+#include "../common/tomak_via_tapdance.h"
 
 #if defined(USB_VBUS_PIN) && defined(TOMAK_USB_VBUS_DEBOUNCE_MS)
 bool usb_vbus_state(void) {
@@ -243,6 +244,7 @@ void via_init_kb(void)
         write_tomak_config_to_eeprom(&g_tomak_config);
         // DO NOT set EEPROM valid here, let caller do this
     }
+    tomak_via_tapdance_init();
 }
 
 // Some helpers for setting/getting HSV
@@ -322,14 +324,19 @@ static void indicator_config_set_value( uint8_t *data )
 
 void via_custom_value_command_kb(uint8_t *data, uint8_t length)
 {
-    (void)length;
-
     // data = [ command_id, channel_id, value_id, value_data ]
     uint8_t *command_id        = &(data[0]);
     uint8_t *channel_id        = &(data[1]);
     uint8_t *value_id_and_data = &(data[2]);
 
     if ( *channel_id == id_custom_channel ) {
+        if (*command_id == id_custom_save || tomak_via_tapdance_is_value_id(*value_id_and_data)) {
+            tomak_via_tapdance_handle_via_command(data, length);
+            if (*command_id != id_custom_save) {
+                return;
+            }
+        }
+
         switch ( *command_id )
         {
             case id_custom_set_value:

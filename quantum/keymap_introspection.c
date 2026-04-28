@@ -126,6 +126,29 @@ __attribute__((weak)) combo_t* combo_get(uint16_t combo_idx) {
 
 #if defined(TAP_DANCE_ENABLE)
 
+#    if defined(TOMAK_VIA_TAP_DANCE_ENABLE)
+
+extern uint16_t            tomak_via_tapdance_count(void);
+extern tap_dance_action_t *tomak_via_tapdance_get(uint16_t tap_dance_idx);
+
+uint16_t tap_dance_count_raw(void) {
+    return tomak_via_tapdance_count();
+}
+
+__attribute__((weak)) uint16_t tap_dance_count(void) {
+    return tap_dance_count_raw();
+}
+
+tap_dance_action_t *tap_dance_get_raw(uint16_t tap_dance_idx) {
+    return tomak_via_tapdance_get(tap_dance_idx);
+}
+
+__attribute__((weak)) tap_dance_action_t *tap_dance_get(uint16_t tap_dance_idx) {
+    return tap_dance_get_raw(tap_dance_idx);
+}
+
+#    else
+
 uint16_t tap_dance_count_raw(void) {
     return ARRAY_SIZE(tap_dance_actions);
 }
@@ -146,6 +169,8 @@ tap_dance_action_t* tap_dance_get_raw(uint16_t tap_dance_idx) {
 __attribute__((weak)) tap_dance_action_t* tap_dance_get(uint16_t tap_dance_idx) {
     return tap_dance_get_raw(tap_dance_idx);
 }
+
+#    endif
 
 #endif // defined(TAP_DANCE_ENABLE)
 

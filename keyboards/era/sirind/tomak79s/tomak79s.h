@@ -5,8 +5,19 @@
 
 #include "quantum.h"
 
+#define TOMAK_VIA_TAP_DANCE_ENABLE
+#define TOMAK_TAP_DANCE_KEYCODE_BASE QK_KB_0
+
 enum tomak_keycodes {
-    TOMAK_DIAG = QK_KB_0 // type split transport diagnostics
+    TD0 = QK_KB_0,
+    TD1,
+    TD2,
+    TD3,
+    TD4,
+    TD5,
+    TD6,
+    TD7,
+    TOMAK_DIAG // type split transport diagnostics
 };
 
 typedef union {

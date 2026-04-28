@@ -22,6 +22,9 @@
 #define SERIAL_USART_SPEED 460800
 #define SERIAL_USART_TIMEOUT 5
 
+/* VIA Tap Dance custom UI storage */
+#define VIA_EEPROM_CUSTOM_CONFIG_SIZE 88
+
 #ifdef SERIAL_USART_FULL_DUPLEX
 #    error "Tomak79S split USB-C wiring must not use full-duplex serial; GP0/TX would be driven against the other half."
 #endif
