@@ -1,0 +1,24 @@
+# Odessey60S
+
+* Keyboard Maintainer: [ERA](https://github.com/eerraa)
+* Hardware supported: Odessey60S PCB
+* Hardware availability: [ERA](https://github.com/eerraa)
+
+Make example for this keyboard (after setting up your build environment):
+
+    make era/newone/odessey60s:default
+
+Flashing example for this keyboard:
+
+    make era/newone/odessey60s:default:flash
+
+See the [build environment setup](https://docs.qmk.fm/#/getting_started_build_tools) and the [make instructions](https://docs.qmk.fm/#/getting_started_make_guide) for more information. Brand new to QMK? Start with our [Complete Newbs Guide](https://docs.qmk.fm/#/newbs).
+
+## Bootloader
+
+Enter the bootloader in 4 ways:
+
+* **Bootmagic reset**: Hold down the key at ESC(0,0) in the matrix (usually the top left key or Escape) and plug in the keyboard
+* **Physical reset button**: Press the rear `RESET` button twice within 1 second
+* **Physical boot button**: Hold the rear `BOOT` button while plugging in the keyboard
+* **Keycode in layout**: Press the key mapped to `QK_BOOT` if it is available
