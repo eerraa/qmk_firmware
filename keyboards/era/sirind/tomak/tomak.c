@@ -103,6 +103,14 @@ void keyboard_pre_init_kb(void) {
 }
 #endif
 
+#if defined(TOMAK_SPLIT_DEFER_SLAVE_RGB_UNTIL_SYNC) && defined(RGB_MATRIX_ENABLE)
+static void tomak_defer_slave_rgb_until_sync(void) {
+    if (!is_keyboard_master()) {
+        rgb_matrix_set_suspend_state(true);
+    }
+}
+#endif
+
 #ifdef TOMAK_CONFIG_SYNC
 void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void* initiator2target_buffer, uint8_t target2initiator_buffer_size, void* target2initiator_buffer) {
     (void)target2initiator_buffer_size;
@@ -118,6 +126,9 @@ void keyboard_post_init_kb(void) {
     keyboard_post_init_user();
 #ifdef TOMAK_SPLIT_SAFE_SINGLE_WIRE
     tomak_disable_unused_split_tx_pin();
+#endif
+#if defined(TOMAK_SPLIT_DEFER_SLAVE_RGB_UNTIL_SYNC) && defined(RGB_MATRIX_ENABLE)
+    tomak_defer_slave_rgb_until_sync();
 #endif
 }
 
