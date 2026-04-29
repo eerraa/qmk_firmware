@@ -90,6 +90,7 @@ void                           eeconfig_update_unicode_mode(const unicode_config
 typedef union backlight_config_t backlight_config_t;
 void                             eeconfig_read_backlight(backlight_config_t *backlight_config) __attribute__((nonnull));
 void                             eeconfig_update_backlight(const backlight_config_t *backlight_config) __attribute__((nonnull));
+void                             eeconfig_backlight_changed_kb(const backlight_config_t *backlight_config) __attribute__((nonnull));
 #endif // BACKLIGHT_ENABLE
 
 #ifdef STENO_ENABLE
@@ -101,18 +102,21 @@ void    eeconfig_update_steno_mode(uint8_t val);
 typedef union rgb_config_t rgb_config_t;
 void                       eeconfig_read_rgb_matrix(rgb_config_t *rgb_matrix_config) __attribute__((nonnull));
 void                       eeconfig_update_rgb_matrix(const rgb_config_t *rgb_matrix_config) __attribute__((nonnull));
+void                       eeconfig_rgb_matrix_changed_kb(const rgb_config_t *rgb_matrix_config) __attribute__((nonnull));
 #endif // RGB_MATRIX_ENABLE
 
 #ifdef LED_MATRIX_ENABLE
 typedef union led_eeconfig_t led_eeconfig_t;
 void                         eeconfig_read_led_matrix(led_eeconfig_t *led_matrix_config) __attribute__((nonnull));
 void                         eeconfig_update_led_matrix(const led_eeconfig_t *led_matrix_config) __attribute__((nonnull));
+void                         eeconfig_led_matrix_changed_kb(const led_eeconfig_t *led_matrix_config) __attribute__((nonnull));
 #endif // LED_MATRIX_ENABLE
 
 #ifdef RGBLIGHT_ENABLE
 typedef union rgblight_config_t rgblight_config_t;
 void                            eeconfig_read_rgblight(rgblight_config_t *rgblight_config) __attribute__((nonnull));
 void                            eeconfig_update_rgblight(const rgblight_config_t *rgblight_config) __attribute__((nonnull));
+void                            eeconfig_rgblight_changed_kb(const rgblight_config_t *rgblight_config) __attribute__((nonnull));
 #endif // RGBLIGHT_ENABLE
 
 #if (EECONFIG_KB_DATA_SIZE) == 0

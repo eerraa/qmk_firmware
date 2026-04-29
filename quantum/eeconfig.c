@@ -244,8 +244,12 @@ void eeconfig_update_unicode_mode(const unicode_config_t *unicode_config) {
 void eeconfig_read_backlight(backlight_config_t *backlight_config) {
     nvm_eeconfig_read_backlight(backlight_config);
 }
+__attribute__((weak)) void eeconfig_backlight_changed_kb(const backlight_config_t *backlight_config) {
+    (void)backlight_config;
+}
 void eeconfig_update_backlight(const backlight_config_t *backlight_config) {
     nvm_eeconfig_update_backlight(backlight_config);
+    eeconfig_backlight_changed_kb(backlight_config);
 }
 #endif // BACKLIGHT_ENABLE
 
@@ -262,8 +266,12 @@ void eeconfig_update_steno_mode(uint8_t val) {
 void eeconfig_read_rgb_matrix(rgb_config_t *rgb_matrix_config) {
     nvm_eeconfig_read_rgb_matrix(rgb_matrix_config);
 }
+__attribute__((weak)) void eeconfig_rgb_matrix_changed_kb(const rgb_config_t *rgb_matrix_config) {
+    (void)rgb_matrix_config;
+}
 void eeconfig_update_rgb_matrix(const rgb_config_t *rgb_matrix_config) {
     nvm_eeconfig_update_rgb_matrix(rgb_matrix_config);
+    eeconfig_rgb_matrix_changed_kb(rgb_matrix_config);
 }
 #endif // RGB_MATRIX_ENABLE
 
@@ -271,8 +279,12 @@ void eeconfig_update_rgb_matrix(const rgb_config_t *rgb_matrix_config) {
 void eeconfig_read_led_matrix(led_eeconfig_t *led_matrix_config) {
     nvm_eeconfig_read_led_matrix(led_matrix_config);
 }
+__attribute__((weak)) void eeconfig_led_matrix_changed_kb(const led_eeconfig_t *led_matrix_config) {
+    (void)led_matrix_config;
+}
 void eeconfig_update_led_matrix(const led_eeconfig_t *led_matrix_config) {
     nvm_eeconfig_update_led_matrix(led_matrix_config);
+    eeconfig_led_matrix_changed_kb(led_matrix_config);
 }
 #endif // LED_MATRIX_ENABLE
 
@@ -280,8 +292,12 @@ void eeconfig_update_led_matrix(const led_eeconfig_t *led_matrix_config) {
 void eeconfig_read_rgblight(rgblight_config_t *rgblight_config) {
     nvm_eeconfig_read_rgblight(rgblight_config);
 }
+__attribute__((weak)) void eeconfig_rgblight_changed_kb(const rgblight_config_t *rgblight_config) {
+    (void)rgblight_config;
+}
 void eeconfig_update_rgblight(const rgblight_config_t *rgblight_config) {
     nvm_eeconfig_update_rgblight(rgblight_config);
+    eeconfig_rgblight_changed_kb(rgblight_config);
 }
 #endif // RGBLIGHT_ENABLE
 

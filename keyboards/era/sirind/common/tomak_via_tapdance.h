@@ -25,6 +25,7 @@
 #    define TOMAK_TAP_DANCE_VIA_VALUE_ID_MAX (TOMAK_TAP_DANCE_VIA_VALUE_ID_BASE + (TOMAK_TAP_DANCE_SLOT_COUNT * TOMAK_TAP_DANCE_VIA_VALUE_ID_STRIDE) - 1)
 
 void     tomak_via_tapdance_init(void);
+void     tomak_via_tapdance_reload_from_eeprom(void);
 bool     tomak_via_tapdance_is_value_id(uint8_t value_id);
 bool     tomak_via_tapdance_handle_via_command(uint8_t *data, uint8_t length);
 uint16_t tomak_via_tapdance_get_term_ms(uint16_t keycode);

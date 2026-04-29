@@ -157,6 +157,12 @@ void tomak_via_tapdance_init(void) {
     tomak_via_tapdance_sync_state_from_storage();
 }
 
+void tomak_via_tapdance_reload_from_eeprom(void) {
+    if (via_read_custom_config(&tapdance_storage, 0, sizeof(tapdance_storage)) == sizeof(tapdance_storage) && tomak_via_tapdance_storage_is_valid()) {
+        tomak_via_tapdance_sync_state_from_storage();
+    }
+}
+
 uint16_t tomak_via_tapdance_count(void) {
     return TOMAK_TAP_DANCE_SLOT_COUNT;
 }

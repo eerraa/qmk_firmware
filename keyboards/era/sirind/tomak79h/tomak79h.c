@@ -9,6 +9,7 @@
 #include "usb_util.h"
 #include "wait.h"
 #include "../common/tomak_via_tapdance.h"
+#include "../common/tomak_eeprom_sync.h"
 
 #if defined(USB_VBUS_PIN) && defined(TOMAK_USB_VBUS_DEBOUNCE_MS)
 bool usb_vbus_state(void) {
@@ -118,12 +119,18 @@ void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void*
     (void)target2initiator_buffer;
 
     if (initiator2target_buffer_size == sizeof(g_tomak_config)) {
-        memcpy(&g_tomak_config, initiator2target_buffer, sizeof(g_tomak_config));
+        tomak_config_t incoming;
+        memcpy(&incoming, initiator2target_buffer, sizeof(incoming));
+        if (memcmp(&g_tomak_config, &incoming, sizeof(g_tomak_config))) {
+            memcpy(&g_tomak_config, &incoming, sizeof(g_tomak_config));
+            eeconfig_update_kb(g_tomak_config.raw);
+        }
     }
 }
 
 void keyboard_post_init_kb(void) {
     transaction_register_rpc(RPC_ID_KB_CONFIG_SYNC, tomak_config_sync_handler);
+    tomak_eeprom_sync_init();
     keyboard_post_init_user();
 #ifdef TOMAK_SPLIT_SAFE_SINGLE_WIRE
     tomak79h_disable_unused_split_tx_pin();
@@ -165,6 +172,7 @@ void housekeeping_task_kb(void) {
             }
         }
     }
+    tomak_eeprom_sync_task();
     // No need to invoke the user-specific callback, as it's been called
     // already.
 }

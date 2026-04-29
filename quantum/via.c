@@ -287,6 +287,8 @@ __attribute__((weak)) bool via_command_kb(uint8_t *data, uint8_t length) {
     return false;
 }
 
+__attribute__((weak)) void via_eeprom_changed_kb(const uint8_t *data, uint8_t length) {}
+
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     uint8_t *command_id   = &(data[0]);
     uint8_t *command_data = &(data[1]);
@@ -371,6 +373,7 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                 case id_layout_options: {
                     uint32_t value = ((uint32_t)command_data[1] << 24) | ((uint32_t)command_data[2] << 16) | ((uint32_t)command_data[3] << 8) | (uint32_t)command_data[4];
                     via_set_layout_options(value);
+                    via_eeprom_changed_kb(data, length);
                     break;
                 }
                 case id_device_indication: {
@@ -395,22 +398,28 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         }
         case id_dynamic_keymap_set_keycode: {
             dynamic_keymap_set_keycode(command_data[0], command_data[1], command_data[2], (command_data[3] << 8) | command_data[4]);
+            via_eeprom_changed_kb(data, length);
             break;
         }
         case id_dynamic_keymap_reset: {
             dynamic_keymap_reset();
+            via_eeprom_changed_kb(data, length);
             break;
         }
         case id_custom_set_value:
         case id_custom_get_value:
         case id_custom_save: {
             via_custom_value_command(data, length);
+            if (*command_id != id_unhandled) {
+                via_eeprom_changed_kb(data, length);
+            }
             break;
         }
 #ifdef VIA_EEPROM_ALLOW_RESET
         case id_eeprom_reset: {
             via_eeprom_set_valid(false);
             eeconfig_init_via();
+            via_eeprom_changed_kb(data, length);
             break;
         }
 #endif
@@ -434,10 +443,12 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
             dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
+            via_eeprom_changed_kb(data, length);
             break;
         }
         case id_dynamic_keymap_macro_reset: {
             dynamic_keymap_macro_reset();
+            via_eeprom_changed_kb(data, length);
             break;
         }
         case id_dynamic_keymap_get_layer_count: {
@@ -454,6 +465,7 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
             dynamic_keymap_set_buffer(offset, size, &command_data[3]);
+            via_eeprom_changed_kb(data, length);
             break;
         }
 #ifdef ENCODER_MAP_ENABLE
@@ -465,6 +477,7 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         }
         case id_dynamic_keymap_set_encoder: {
             dynamic_keymap_set_encoder(command_data[0], command_data[1], command_data[2] != 0, (command_data[3] << 8) | command_data[4]);
+            via_eeprom_changed_kb(data, length);
             break;
         }
 #endif
