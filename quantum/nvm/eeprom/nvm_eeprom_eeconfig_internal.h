@@ -61,3 +61,5 @@ typedef struct PACKED {
 #define EECONFIG_SIZE ((EECONFIG_BASE_SIZE) + (EECONFIG_KB_DATA_SIZE) + (EECONFIG_USER_DATA_SIZE))
 
 STATIC_ASSERT((intptr_t)EECONFIG_HANDEDNESS == 14, "EEPROM handedness offset is incorrect");
+
+void nvm_eeprom_changed_kb(uint16_t offset, uint16_t length);

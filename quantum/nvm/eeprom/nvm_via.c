@@ -30,6 +30,7 @@ void nvm_via_update_magic(uint8_t magic0, uint8_t magic1, uint8_t magic2) {
     eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 0, magic0);
     eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 1, magic1);
     eeprom_update_byte((void *)VIA_EEPROM_MAGIC_ADDR + 2, magic2);
+    nvm_eeprom_changed_kb(VIA_EEPROM_MAGIC_ADDR, 3);
 }
 
 uint32_t nvm_via_read_layout_options(void) {
@@ -52,6 +53,7 @@ void nvm_via_update_layout_options(uint32_t val) {
         val = val >> 8;
         target--;
     }
+    nvm_eeprom_changed_kb(VIA_EEPROM_LAYOUT_OPTIONS_ADDR, VIA_EEPROM_LAYOUT_OPTIONS_SIZE);
 }
 
 uint32_t nvm_via_read_custom_config(void *buf, uint32_t offset, uint32_t length) {
@@ -70,6 +72,7 @@ uint32_t nvm_via_update_custom_config(const void *buf, uint32_t offset, uint32_t
     void *ee_start = (void *)(uintptr_t)(VIA_EEPROM_CUSTOM_CONFIG_ADDR + offset);
     void *ee_end   = (void *)(uintptr_t)(VIA_EEPROM_CUSTOM_CONFIG_ADDR + MIN(VIA_EEPROM_CUSTOM_CONFIG_SIZE, offset + length));
     eeprom_update_block(buf, ee_start, ee_end - ee_start);
+    nvm_eeprom_changed_kb(VIA_EEPROM_CUSTOM_CONFIG_ADDR + offset, ee_end - ee_start);
     return ee_end - ee_start;
 #else
     return 0;

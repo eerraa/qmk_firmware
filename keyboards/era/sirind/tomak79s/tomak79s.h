@@ -26,6 +26,8 @@ typedef union {
         bool indicator_toggle:1;           // | byte
         bool indicator_override:1;         // | byte
         bool per_key_toggle:1;             // | byte
+        bool eeprom_sync_enable:1;         // | byte
+        bool eeprom_sync_initialized:1;    // | byte
         HSV indicator_hsv;                 // 3 bytes
     } __attribute__((packed));             // total 4 bytes
 } tomak_config_t;
@@ -39,7 +41,8 @@ enum tomak_custom_value_id {
     id_custom_indicator_override,
     id_custom_indicator_brightness,
     id_custom_indicator_color,
-    id_custom_per_key_toggle
+    id_custom_per_key_toggle,
+    id_custom_eeprom_sync_enable
 };
 
 #endif

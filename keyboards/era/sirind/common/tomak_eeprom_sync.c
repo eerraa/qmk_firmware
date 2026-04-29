@@ -9,13 +9,17 @@
 #include <stddef.h>
 #include <string.h>
 #include "crc.h"
-#include "dynamic_keymap.h"
+#include "eeprom.h"
+#include "action_layer.h"
+#include "keycode_config.h"
 #include "split_util.h"
 #include "timer.h"
 #include "transactions.h"
 #include "transport.h"
 #include "via.h"
 #include "tomak_via_tapdance.h"
+#include "quantum/nvm/eeprom/nvm_eeprom_eeconfig_internal.h"
+#include "quantum/nvm/eeprom/nvm_eeprom_via_internal.h"
 
 #ifdef BACKLIGHT_ENABLE
 #    include "backlight.h"
@@ -45,38 +49,31 @@
 #    define TOMAK_EEPROM_SYNC_STARTUP_DELAY_MS 1000
 #endif
 
+#ifndef TOMAK_EEPROM_SYNC_AUDIT_BLOCK_SIZE
+#    define TOMAK_EEPROM_SYNC_AUDIT_BLOCK_SIZE 64
+#endif
+
+#ifndef TOMAK_EEPROM_SYNC_QUEUE_SIZE
+#    define TOMAK_EEPROM_SYNC_QUEUE_SIZE 8
+#endif
+
 #define TOMAK_EEPROM_SYNC_FLAG_COMPLETE 0x01
 
 enum {
     TOMAK_EEPROM_SYNC_ACK_OK,
     TOMAK_EEPROM_SYNC_ACK_BAD_SIZE,
-    TOMAK_EEPROM_SYNC_ACK_BAD_REGION,
+    TOMAK_EEPROM_SYNC_ACK_BAD_COMMAND,
     TOMAK_EEPROM_SYNC_ACK_BAD_CRC,
     TOMAK_EEPROM_SYNC_ACK_BAD_RANGE
 };
 
 enum {
-    TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS,
-    TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG,
-    TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP,
-    TOMAK_EEPROM_REGION_DYNAMIC_MACRO,
-#ifdef BACKLIGHT_ENABLE
-    TOMAK_EEPROM_REGION_BACKLIGHT,
-#endif
-#ifdef LED_MATRIX_ENABLE
-    TOMAK_EEPROM_REGION_LED_MATRIX,
-#endif
-#ifdef RGB_MATRIX_ENABLE
-    TOMAK_EEPROM_REGION_RGB_MATRIX,
-#endif
-#ifdef RGBLIGHT_ENABLE
-    TOMAK_EEPROM_REGION_RGBLIGHT,
-#endif
-    TOMAK_EEPROM_REGION_COUNT
+    TOMAK_EEPROM_SYNC_COMMAND_WRITE,
+    TOMAK_EEPROM_SYNC_COMMAND_CRC
 };
 
 typedef struct __attribute__((packed)) {
-    uint8_t  region;
+    uint8_t  command;
     uint8_t  flags;
     uint16_t offset;
     uint8_t  length;
@@ -84,269 +81,201 @@ typedef struct __attribute__((packed)) {
     uint8_t  crc;
 } tomak_eeprom_sync_packet_t;
 
+typedef struct __attribute__((packed)) {
+    uint8_t ack;
+    uint8_t value;
+} tomak_eeprom_sync_response_t;
+
 typedef struct {
     bool     dirty;
     uint16_t start;
     uint16_t end;
     uint16_t next;
-} tomak_eeprom_sync_region_state_t;
+} tomak_eeprom_sync_range_t;
 
-static tomak_eeprom_sync_region_state_t sync_regions[TOMAK_EEPROM_REGION_COUNT];
-static bool                             startup_snapshot_done;
+static tomak_eeprom_sync_range_t sync_ranges[TOMAK_EEPROM_SYNC_QUEUE_SIZE];
+static bool                      startup_snapshot_done;
+static bool                      startup_audit_active;
+static uint16_t                  startup_audit_next;
 
-static uint16_t tomak_eeprom_sync_region_size(uint8_t region) {
-    switch (region) {
-        case TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS:
-            return VIA_EEPROM_LAYOUT_OPTIONS_SIZE;
-        case TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG:
-            return VIA_EEPROM_CUSTOM_CONFIG_SIZE;
-        case TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP:
-            return DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2;
-        case TOMAK_EEPROM_REGION_DYNAMIC_MACRO:
-            return dynamic_keymap_macro_get_buffer_size();
-#ifdef BACKLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_BACKLIGHT:
-            return sizeof(backlight_config_t);
-#endif
-#ifdef LED_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_LED_MATRIX:
-            return sizeof(led_eeconfig_t);
-#endif
-#ifdef RGB_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_RGB_MATRIX:
-            return sizeof(rgb_config_t);
-#endif
-#ifdef RGBLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_RGBLIGHT:
-            return sizeof(rgblight_config_t);
-#endif
-        default:
-            return 0;
-    }
+__attribute__((weak)) bool tomak_eeprom_sync_enabled_kb(void) {
+    return true;
 }
 
-static void tomak_eeprom_sync_mark_range(uint8_t region, uint16_t offset, uint16_t length) {
-    if (region >= TOMAK_EEPROM_REGION_COUNT || length == 0) {
+static uint16_t tomak_eeprom_sync_size(void) {
+    return (uint16_t)TOTAL_EEPROM_BYTE_COUNT;
+}
+
+static bool tomak_eeprom_sync_is_protected_offset(uint16_t offset) {
+    return offset == (uint16_t)(uintptr_t)EECONFIG_HANDEDNESS;
+}
+
+static bool tomak_eeprom_sync_range_has_protected(uint16_t offset, uint16_t length) {
+    for (uint16_t i = 0; i < length; i++) {
+        if (tomak_eeprom_sync_is_protected_offset(offset + i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool tomak_eeprom_sync_valid_range(uint16_t offset, uint16_t length) {
+    uint16_t size = tomak_eeprom_sync_size();
+    return length > 0 && offset < size && length <= size - offset && !tomak_eeprom_sync_range_has_protected(offset, length);
+}
+
+static void tomak_eeprom_sync_read_raw(uint16_t offset, uint8_t length, uint8_t *data) {
+    eeprom_read_block(data, (const void *)(uintptr_t)offset, length);
+}
+
+static void tomak_eeprom_sync_write_raw(uint16_t offset, uint8_t length, const uint8_t *data) {
+    eeprom_update_block(data, (void *)(uintptr_t)offset, length);
+}
+
+static bool tomak_eeprom_sync_ranges_touch(uint16_t a_start, uint16_t a_end, uint16_t b_start, uint16_t b_end) {
+    return a_start <= b_end && b_start <= a_end;
+}
+
+static uint16_t tomak_eeprom_sync_expansion(const tomak_eeprom_sync_range_t *range, uint16_t start, uint16_t end) {
+    uint16_t merged_start = MIN(range->start, start);
+    uint16_t merged_end   = MAX(range->end, end);
+    return (merged_end - merged_start) - (range->end - range->start);
+}
+
+static void tomak_eeprom_sync_set_range(tomak_eeprom_sync_range_t *range, uint16_t start, uint16_t end) {
+    range->dirty = true;
+    range->start = start;
+    range->end   = end;
+    range->next  = start;
+}
+
+static void tomak_eeprom_sync_mark_raw_range(uint16_t offset, uint16_t length) {
+    uint16_t size = tomak_eeprom_sync_size();
+    if (length == 0 || offset >= size) {
         return;
     }
 
-    uint16_t region_size = tomak_eeprom_sync_region_size(region);
-    if (offset >= region_size) {
-        return;
+    uint16_t start = offset;
+    uint16_t end   = MIN(size, offset + length);
+
+    for (uint8_t i = 0; i < TOMAK_EEPROM_SYNC_QUEUE_SIZE; i++) {
+        tomak_eeprom_sync_range_t *range = &sync_ranges[i];
+        if (range->dirty && tomak_eeprom_sync_ranges_touch(range->start, range->end, start, end)) {
+            range->start = MIN(range->start, start);
+            range->end   = MAX(range->end, end);
+            range->next  = MIN(range->next, start);
+            return;
+        }
     }
 
-    uint16_t end = MIN(region_size, offset + length);
-    tomak_eeprom_sync_region_state_t *state = &sync_regions[region];
-
-    if (!state->dirty) {
-        state->dirty = true;
-        state->start = offset;
-        state->end   = end;
-        state->next  = offset;
-        return;
+    for (uint8_t i = 0; i < TOMAK_EEPROM_SYNC_QUEUE_SIZE; i++) {
+        if (!sync_ranges[i].dirty) {
+            tomak_eeprom_sync_set_range(&sync_ranges[i], start, end);
+            return;
+        }
     }
 
-    state->start = MIN(state->start, offset);
-    state->end   = MAX(state->end, end);
-    state->next  = MIN(state->next, offset);
-}
-
-static void tomak_eeprom_sync_mark_region(uint8_t region) {
-    tomak_eeprom_sync_mark_range(region, 0, tomak_eeprom_sync_region_size(region));
-}
-
-static void tomak_eeprom_sync_read_layout_options(uint16_t offset, uint8_t length, uint8_t *data) {
-    uint32_t value = via_get_layout_options();
-    uint8_t  bytes[VIA_EEPROM_LAYOUT_OPTIONS_SIZE] = {0};
-
-    for (uint8_t i = 0; i < VIA_EEPROM_LAYOUT_OPTIONS_SIZE; i++) {
-        uint8_t shift = (VIA_EEPROM_LAYOUT_OPTIONS_SIZE - 1 - i) * 8;
-        bytes[i] = (value >> shift) & 0xFF;
+    uint8_t  best_index     = 0;
+    uint16_t best_expansion = UINT16_MAX;
+    for (uint8_t i = 0; i < TOMAK_EEPROM_SYNC_QUEUE_SIZE; i++) {
+        uint16_t expansion = tomak_eeprom_sync_expansion(&sync_ranges[i], start, end);
+        if (expansion < best_expansion) {
+            best_index     = i;
+            best_expansion = expansion;
+        }
     }
-    memcpy(data, &bytes[offset], length);
+
+    tomak_eeprom_sync_range_t *range = &sync_ranges[best_index];
+    range->start = MIN(range->start, start);
+    range->end   = MAX(range->end, end);
+    range->next  = MIN(range->next, start);
 }
 
-static void tomak_eeprom_sync_write_layout_options(uint16_t offset, uint8_t length, const uint8_t *data) {
-    uint32_t value = via_get_layout_options();
-    uint8_t  bytes[VIA_EEPROM_LAYOUT_OPTIONS_SIZE] = {0};
-
-    for (uint8_t i = 0; i < VIA_EEPROM_LAYOUT_OPTIONS_SIZE; i++) {
-        uint8_t shift = (VIA_EEPROM_LAYOUT_OPTIONS_SIZE - 1 - i) * 8;
-        bytes[i] = (value >> shift) & 0xFF;
+static bool tomak_eeprom_sync_next_unprotected_chunk(tomak_eeprom_sync_range_t *range, uint16_t *offset, uint8_t *length) {
+    while (range->next < range->end && tomak_eeprom_sync_is_protected_offset(range->next)) {
+        range->next++;
     }
-    memcpy(&bytes[offset], data, length);
 
-    value = 0;
-    for (uint8_t i = 0; i < VIA_EEPROM_LAYOUT_OPTIONS_SIZE; i++) {
-        value = (value << 8) | bytes[i];
+    if (range->next >= range->end) {
+        range->dirty = false;
+        return false;
     }
-    via_set_layout_options(value);
-}
 
-#ifdef BACKLIGHT_ENABLE
-static void tomak_eeprom_sync_read_backlight(uint16_t offset, uint8_t length, uint8_t *data) {
-    backlight_config_t config;
-    eeconfig_read_backlight(&config);
-    memcpy(data, ((const uint8_t *)&config) + offset, length);
-}
-
-static void tomak_eeprom_sync_write_backlight(uint16_t offset, uint8_t length, const uint8_t *data) {
-    backlight_config_t config;
-    eeconfig_read_backlight(&config);
-    memcpy(((uint8_t *)&config) + offset, data, length);
-    eeconfig_update_backlight(&config);
-}
-#endif
-
-#ifdef LED_MATRIX_ENABLE
-static void tomak_eeprom_sync_read_led_matrix(uint16_t offset, uint8_t length, uint8_t *data) {
-    led_eeconfig_t config;
-    eeconfig_read_led_matrix(&config);
-    memcpy(data, ((const uint8_t *)&config) + offset, length);
-}
-
-static void tomak_eeprom_sync_write_led_matrix(uint16_t offset, uint8_t length, const uint8_t *data) {
-    led_eeconfig_t config;
-    eeconfig_read_led_matrix(&config);
-    memcpy(((uint8_t *)&config) + offset, data, length);
-    eeconfig_update_led_matrix(&config);
-}
-#endif
-
-#ifdef RGB_MATRIX_ENABLE
-static void tomak_eeprom_sync_read_rgb_matrix(uint16_t offset, uint8_t length, uint8_t *data) {
-    rgb_config_t config;
-    eeconfig_read_rgb_matrix(&config);
-    memcpy(data, ((const uint8_t *)&config) + offset, length);
-}
-
-static void tomak_eeprom_sync_write_rgb_matrix(uint16_t offset, uint8_t length, const uint8_t *data) {
-    rgb_config_t config;
-    eeconfig_read_rgb_matrix(&config);
-    memcpy(((uint8_t *)&config) + offset, data, length);
-    eeconfig_update_rgb_matrix(&config);
-}
-#endif
-
-#ifdef RGBLIGHT_ENABLE
-static void tomak_eeprom_sync_read_rgblight(uint16_t offset, uint8_t length, uint8_t *data) {
-    rgblight_config_t config;
-    eeconfig_read_rgblight(&config);
-    memcpy(data, ((const uint8_t *)&config) + offset, length);
-}
-
-static void tomak_eeprom_sync_write_rgblight(uint16_t offset, uint8_t length, const uint8_t *data) {
-    rgblight_config_t config;
-    eeconfig_read_rgblight(&config);
-    memcpy(((uint8_t *)&config) + offset, data, length);
-    eeconfig_update_rgblight(&config);
-}
-#endif
-
-static void tomak_eeprom_sync_read_region(uint8_t region, uint16_t offset, uint8_t length, uint8_t *data) {
-    switch (region) {
-        case TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS:
-            tomak_eeprom_sync_read_layout_options(offset, length, data);
-            break;
-        case TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG:
-            via_read_custom_config(data, offset, length);
-            break;
-        case TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP:
-            dynamic_keymap_get_buffer(offset, length, data);
-            break;
-        case TOMAK_EEPROM_REGION_DYNAMIC_MACRO:
-            dynamic_keymap_macro_get_buffer(offset, length, data);
-            break;
-#ifdef BACKLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_BACKLIGHT:
-            tomak_eeprom_sync_read_backlight(offset, length, data);
-            break;
-#endif
-#ifdef LED_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_LED_MATRIX:
-            tomak_eeprom_sync_read_led_matrix(offset, length, data);
-            break;
-#endif
-#ifdef RGB_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_RGB_MATRIX:
-            tomak_eeprom_sync_read_rgb_matrix(offset, length, data);
-            break;
-#endif
-#ifdef RGBLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_RGBLIGHT:
-            tomak_eeprom_sync_read_rgblight(offset, length, data);
-            break;
-#endif
+    uint16_t max_end = MIN(range->end, range->next + TOMAK_EEPROM_SYNC_CHUNK_SIZE);
+    uint16_t next_end = range->next;
+    while (next_end < max_end && !tomak_eeprom_sync_is_protected_offset(next_end)) {
+        next_end++;
     }
+
+    *offset = range->next;
+    *length = (uint8_t)(next_end - range->next);
+    return *length > 0;
 }
 
-static void tomak_eeprom_sync_write_region(uint8_t region, uint16_t offset, uint8_t length, const uint8_t *data) {
-    switch (region) {
-        case TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS:
-            tomak_eeprom_sync_write_layout_options(offset, length, data);
-            break;
-        case TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG:
-            via_update_custom_config(data, offset, length);
-            break;
-        case TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP:
-            dynamic_keymap_set_buffer(offset, length, (uint8_t *)data);
-            break;
-        case TOMAK_EEPROM_REGION_DYNAMIC_MACRO:
-            dynamic_keymap_macro_set_buffer(offset, length, (uint8_t *)data);
-            break;
-#ifdef BACKLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_BACKLIGHT:
-            tomak_eeprom_sync_write_backlight(offset, length, data);
-            break;
-#endif
-#ifdef LED_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_LED_MATRIX:
-            tomak_eeprom_sync_write_led_matrix(offset, length, data);
-            break;
-#endif
-#ifdef RGB_MATRIX_ENABLE
-        case TOMAK_EEPROM_REGION_RGB_MATRIX:
-            tomak_eeprom_sync_write_rgb_matrix(offset, length, data);
-            break;
-#endif
-#ifdef RGBLIGHT_ENABLE
-        case TOMAK_EEPROM_REGION_RGBLIGHT:
-            tomak_eeprom_sync_write_rgblight(offset, length, data);
-            break;
-#endif
+static uint8_t tomak_eeprom_sync_crc_raw(uint16_t offset, uint8_t length) {
+    uint8_t data[TOMAK_EEPROM_SYNC_AUDIT_BLOCK_SIZE] = {0};
+    eeprom_read_block(data, (const void *)(uintptr_t)offset, length);
+
+    for (uint8_t i = 0; i < length; i++) {
+        if (tomak_eeprom_sync_is_protected_offset(offset + i)) {
+            data[i] = 0;
+        }
     }
+    return crc8(data, length);
 }
 
-static void tomak_eeprom_sync_region_complete(uint8_t region) {
-    if (region == TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG) {
+static bool tomak_eeprom_sync_intersects(uint16_t offset, uint16_t length, uint16_t target_offset, uint16_t target_length) {
+    uint16_t end = offset + length;
+    uint16_t target_end = target_offset + target_length;
+    return offset < target_end && target_offset < end;
+}
+
+static void tomak_eeprom_sync_range_complete(uint16_t offset, uint16_t length) {
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_DEFAULT_LAYER, sizeof(uint8_t))) {
+        default_layer_set(eeconfig_read_default_layer());
+    }
+
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_KEYMAP, sizeof(uint16_t))) {
+        eeconfig_read_keymap(&keymap_config);
+    }
+
+#if VIA_EEPROM_CUSTOM_CONFIG_SIZE > 0
+    if (tomak_eeprom_sync_intersects(offset, length, VIA_EEPROM_CUSTOM_CONFIG_ADDR, VIA_EEPROM_CUSTOM_CONFIG_SIZE)) {
         tomak_via_tapdance_reload_from_eeprom();
     }
+#endif
+
 #ifdef BACKLIGHT_ENABLE
-    if (region == TOMAK_EEPROM_REGION_BACKLIGHT) {
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_BACKLIGHT, sizeof(backlight_config_t))) {
         backlight_init();
     }
 #endif
+
 #ifdef LED_MATRIX_ENABLE
-    if (region == TOMAK_EEPROM_REGION_LED_MATRIX) {
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_LED_MATRIX, sizeof(led_eeconfig_t))) {
         led_matrix_reload_from_eeprom();
     }
 #endif
+
 #ifdef RGB_MATRIX_ENABLE
-    if (region == TOMAK_EEPROM_REGION_RGB_MATRIX) {
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_RGB_MATRIX, sizeof(rgb_config_t))) {
         rgb_matrix_reload_from_eeprom();
     }
 #endif
+
 #ifdef RGBLIGHT_ENABLE
-    if (region == TOMAK_EEPROM_REGION_RGBLIGHT) {
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_RGBLIGHT, sizeof(uint32_t)) ||
+        tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_RGBLIGHT_EXTENDED, sizeof(uint8_t))) {
         rgblight_reload_from_eeprom();
     }
 #endif
 }
 
 static void tomak_eeprom_sync_slave_handler(uint8_t initiator2target_buffer_size, const void *initiator2target_buffer, uint8_t target2initiator_buffer_size, void *target2initiator_buffer) {
-    uint8_t *ack = target2initiator_buffer;
-    if (target2initiator_buffer_size >= 1 && ack) {
-        *ack = TOMAK_EEPROM_SYNC_ACK_BAD_SIZE;
+    tomak_eeprom_sync_response_t *response = target2initiator_buffer;
+    if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+        response->ack   = TOMAK_EEPROM_SYNC_ACK_BAD_SIZE;
+        response->value = 0;
     }
 
     if (initiator2target_buffer_size != sizeof(tomak_eeprom_sync_packet_t)) {
@@ -354,34 +283,120 @@ static void tomak_eeprom_sync_slave_handler(uint8_t initiator2target_buffer_size
     }
 
     const tomak_eeprom_sync_packet_t *packet = initiator2target_buffer;
-    if (packet->region >= TOMAK_EEPROM_REGION_COUNT || packet->length > TOMAK_EEPROM_SYNC_CHUNK_SIZE) {
-        if (target2initiator_buffer_size >= 1 && ack) {
-            *ack = TOMAK_EEPROM_SYNC_ACK_BAD_REGION;
-        }
-        return;
-    }
     if (packet->crc != crc8(packet, offsetof(tomak_eeprom_sync_packet_t, crc))) {
-        if (target2initiator_buffer_size >= 1 && ack) {
-            *ack = TOMAK_EEPROM_SYNC_ACK_BAD_CRC;
+        if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+            response->ack = TOMAK_EEPROM_SYNC_ACK_BAD_CRC;
         }
         return;
     }
 
-    uint16_t region_size = tomak_eeprom_sync_region_size(packet->region);
-    if (packet->offset >= region_size || packet->offset + packet->length > region_size) {
-        if (target2initiator_buffer_size >= 1 && ack) {
-            *ack = TOMAK_EEPROM_SYNC_ACK_BAD_RANGE;
+    switch (packet->command) {
+        case TOMAK_EEPROM_SYNC_COMMAND_WRITE:
+            if (packet->length > TOMAK_EEPROM_SYNC_CHUNK_SIZE || !tomak_eeprom_sync_valid_range(packet->offset, packet->length)) {
+                if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+                    response->ack = TOMAK_EEPROM_SYNC_ACK_BAD_RANGE;
+                }
+                return;
+            }
+
+            tomak_eeprom_sync_write_raw(packet->offset, packet->length, packet->data);
+            tomak_eeprom_sync_range_complete(packet->offset, packet->length);
+            if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+                response->ack = TOMAK_EEPROM_SYNC_ACK_OK;
+            }
+            return;
+
+        case TOMAK_EEPROM_SYNC_COMMAND_CRC:
+            if (packet->length == 0 || packet->length > TOMAK_EEPROM_SYNC_AUDIT_BLOCK_SIZE || packet->offset >= tomak_eeprom_sync_size() || packet->length > tomak_eeprom_sync_size() - packet->offset) {
+                if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+                    response->ack = TOMAK_EEPROM_SYNC_ACK_BAD_RANGE;
+                }
+                return;
+            }
+
+            if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+                response->ack   = TOMAK_EEPROM_SYNC_ACK_OK;
+                response->value = tomak_eeprom_sync_crc_raw(packet->offset, packet->length);
+            }
+            return;
+
+        default:
+            if (target2initiator_buffer_size >= sizeof(tomak_eeprom_sync_response_t) && response) {
+                response->ack = TOMAK_EEPROM_SYNC_ACK_BAD_COMMAND;
+            }
+            return;
+    }
+}
+
+static bool tomak_eeprom_sync_send_packet(tomak_eeprom_sync_packet_t *packet, tomak_eeprom_sync_response_t *response) {
+    packet->crc = crc8(packet, offsetof(tomak_eeprom_sync_packet_t, crc));
+    response->ack = TOMAK_EEPROM_SYNC_ACK_BAD_SIZE;
+    response->value = 0;
+    return transaction_rpc_exec(RPC_ID_TOMAK_EEPROM_SYNC, sizeof(*packet), packet, sizeof(*response), response) && response->ack == TOMAK_EEPROM_SYNC_ACK_OK;
+}
+
+static bool tomak_eeprom_sync_send_dirty(void) {
+    for (uint8_t i = 0; i < TOMAK_EEPROM_SYNC_QUEUE_SIZE; i++) {
+        tomak_eeprom_sync_range_t *range = &sync_ranges[i];
+        if (!range->dirty || range->next >= range->end) {
+            range->dirty = false;
+            continue;
         }
-        return;
+
+        uint16_t offset = 0;
+        uint8_t  length = 0;
+        if (!tomak_eeprom_sync_next_unprotected_chunk(range, &offset, &length)) {
+            continue;
+        }
+
+        tomak_eeprom_sync_packet_t packet = {0};
+        packet.command = TOMAK_EEPROM_SYNC_COMMAND_WRITE;
+        packet.offset  = offset;
+        packet.length  = length;
+        packet.flags   = (offset + length >= range->end) ? TOMAK_EEPROM_SYNC_FLAG_COMPLETE : 0;
+        tomak_eeprom_sync_read_raw(offset, length, packet.data);
+
+        tomak_eeprom_sync_response_t response;
+        if (tomak_eeprom_sync_send_packet(&packet, &response)) {
+            range->next = offset + length;
+            if (range->next >= range->end) {
+                range->dirty = false;
+            }
+        }
+        return true;
     }
 
-    tomak_eeprom_sync_write_region(packet->region, packet->offset, packet->length, packet->data);
-    if (packet->flags & TOMAK_EEPROM_SYNC_FLAG_COMPLETE) {
-        tomak_eeprom_sync_region_complete(packet->region);
+    return false;
+}
+
+static bool tomak_eeprom_sync_audit_next_block(void) {
+    if (!startup_audit_active) {
+        return false;
     }
-    if (target2initiator_buffer_size >= 1 && ack) {
-        *ack = TOMAK_EEPROM_SYNC_ACK_OK;
+
+    uint16_t size = tomak_eeprom_sync_size();
+    if (startup_audit_next >= size) {
+        startup_audit_active = false;
+        return false;
     }
+
+    uint16_t offset = startup_audit_next;
+    uint8_t length = (uint8_t)MIN(TOMAK_EEPROM_SYNC_AUDIT_BLOCK_SIZE, size - offset);
+
+    tomak_eeprom_sync_packet_t packet = {0};
+    packet.command = TOMAK_EEPROM_SYNC_COMMAND_CRC;
+    packet.offset  = offset;
+    packet.length  = length;
+
+    uint8_t master_crc = tomak_eeprom_sync_crc_raw(offset, length);
+    tomak_eeprom_sync_response_t response;
+    if (tomak_eeprom_sync_send_packet(&packet, &response)) {
+        if (response.value != master_crc) {
+            tomak_eeprom_sync_mark_raw_range(offset, length);
+        }
+        startup_audit_next = offset + length;
+    }
+    return true;
 }
 
 void tomak_eeprom_sync_init(void) {
@@ -390,168 +405,45 @@ void tomak_eeprom_sync_init(void) {
 
 void tomak_eeprom_sync_task(void) {
     static uint32_t last_sync = 0;
+    static bool     was_enabled = true;
 
     if (!is_keyboard_master() || !is_transport_connected()) {
         startup_snapshot_done = false;
+        startup_audit_active  = false;
         return;
     }
+
+    if (!tomak_eeprom_sync_enabled_kb()) {
+        was_enabled = false;
+        return;
+    }
+
+    if (!was_enabled) {
+        startup_audit_next    = 0;
+        startup_audit_active  = true;
+        startup_snapshot_done = true;
+        was_enabled           = true;
+    }
+
     if (!startup_snapshot_done && timer_read32() >= TOMAK_EEPROM_SYNC_STARTUP_DELAY_MS) {
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS);
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG);
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP);
-#ifdef BACKLIGHT_ENABLE
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_BACKLIGHT);
-#endif
-#ifdef LED_MATRIX_ENABLE
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_LED_MATRIX);
-#endif
-#ifdef RGB_MATRIX_ENABLE
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGB_MATRIX);
-#endif
-#ifdef RGBLIGHT_ENABLE
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGBLIGHT);
-#endif
+        startup_audit_next    = 0;
+        startup_audit_active  = true;
         startup_snapshot_done = true;
     }
+
     if (timer_elapsed32(last_sync) < TOMAK_EEPROM_SYNC_INTERVAL_MS) {
         return;
     }
 
-    for (uint8_t region = 0; region < TOMAK_EEPROM_REGION_COUNT; region++) {
-        tomak_eeprom_sync_region_state_t *state = &sync_regions[region];
-        if (!state->dirty || state->next >= state->end) {
-            state->dirty = false;
-            continue;
-        }
-
-        tomak_eeprom_sync_packet_t packet = {0};
-        packet.region = region;
-        packet.offset = state->next;
-        packet.length = MIN(TOMAK_EEPROM_SYNC_CHUNK_SIZE, state->end - state->next);
-        packet.flags  = (state->next + packet.length >= state->end) ? TOMAK_EEPROM_SYNC_FLAG_COMPLETE : 0;
-        tomak_eeprom_sync_read_region(region, packet.offset, packet.length, packet.data);
-        packet.crc = crc8(&packet, offsetof(tomak_eeprom_sync_packet_t, crc));
-
-        uint8_t ack = TOMAK_EEPROM_SYNC_ACK_BAD_SIZE;
-        if (transaction_rpc_exec(RPC_ID_TOMAK_EEPROM_SYNC, sizeof(packet), &packet, sizeof(ack), &ack) && ack == TOMAK_EEPROM_SYNC_ACK_OK) {
-            state->next += packet.length;
-            if (state->next >= state->end) {
-                state->dirty = false;
-            }
-            last_sync = timer_read32();
-        }
-        return;
+    if (tomak_eeprom_sync_send_dirty() || tomak_eeprom_sync_audit_next_block()) {
+        last_sync = timer_read32();
     }
 }
 
-void via_eeprom_changed_kb(const uint8_t *data, uint8_t length) {
-    if (!data || length < 1 || data[0] == id_unhandled) {
-        return;
-    }
-
-    const uint8_t command_id = data[0];
-    const uint8_t *command_data = &data[1];
-
-    switch (command_id) {
-        case id_set_keyboard_value:
-            if (length >= 2 && command_data[0] == id_layout_options) {
-                tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS);
-            }
-            break;
-        case id_dynamic_keymap_set_keycode:
-            if (length >= 6) {
-                uint8_t  layer  = command_data[0];
-                uint8_t  row    = command_data[1];
-                uint8_t  column = command_data[2];
-                uint16_t offset = (layer * MATRIX_ROWS * MATRIX_COLS * 2) + (row * MATRIX_COLS * 2) + (column * 2);
-                tomak_eeprom_sync_mark_range(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP, offset, 2);
-            }
-            break;
-        case id_dynamic_keymap_set_buffer:
-            if (length >= 4) {
-                uint16_t offset = ((uint16_t)command_data[0] << 8) | command_data[1];
-                tomak_eeprom_sync_mark_range(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP, offset, command_data[2]);
-            }
-            break;
-        case id_dynamic_keymap_reset:
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP);
-            break;
-        case id_dynamic_keymap_macro_set_buffer:
-            if (length >= 4) {
-                uint16_t offset = ((uint16_t)command_data[0] << 8) | command_data[1];
-                tomak_eeprom_sync_mark_range(TOMAK_EEPROM_REGION_DYNAMIC_MACRO, offset, command_data[2]);
-            }
-            break;
-        case id_dynamic_keymap_macro_reset:
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_MACRO);
-            break;
-#ifdef ENCODER_MAP_ENABLE
-        case id_dynamic_keymap_set_encoder:
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP);
-            break;
-#endif
-        case id_custom_save:
-            if (length >= 2 && command_data[0] == id_custom_channel) {
-                tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG);
-            }
-            break;
-#ifdef VIA_EEPROM_ALLOW_RESET
-        case id_eeprom_reset:
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_LAYOUT_OPTIONS);
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_VIA_CUSTOM_CONFIG);
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_KEYMAP);
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_DYNAMIC_MACRO);
-#    ifdef BACKLIGHT_ENABLE
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_BACKLIGHT);
-#    endif
-#    ifdef LED_MATRIX_ENABLE
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_LED_MATRIX);
-#    endif
-#    ifdef RGB_MATRIX_ENABLE
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGB_MATRIX);
-#    endif
-#    ifdef RGBLIGHT_ENABLE
-            tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGBLIGHT);
-#    endif
-            break;
-#endif
+void nvm_eeprom_changed_kb(uint16_t offset, uint16_t length) {
+    if (is_keyboard_master() && tomak_eeprom_sync_enabled_kb()) {
+        tomak_eeprom_sync_mark_raw_range(offset, length);
     }
 }
-
-#ifdef BACKLIGHT_ENABLE
-void eeconfig_backlight_changed_kb(const backlight_config_t *backlight_config) {
-    (void)backlight_config;
-    if (is_keyboard_master()) {
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_BACKLIGHT);
-    }
-}
-#endif
-
-#ifdef LED_MATRIX_ENABLE
-void eeconfig_led_matrix_changed_kb(const led_eeconfig_t *led_matrix_config) {
-    (void)led_matrix_config;
-    if (is_keyboard_master()) {
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_LED_MATRIX);
-    }
-}
-#endif
-
-#ifdef RGB_MATRIX_ENABLE
-void eeconfig_rgb_matrix_changed_kb(const rgb_config_t *rgb_matrix_config) {
-    (void)rgb_matrix_config;
-    if (is_keyboard_master()) {
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGB_MATRIX);
-    }
-}
-#endif
-
-#ifdef RGBLIGHT_ENABLE
-void eeconfig_rgblight_changed_kb(const rgblight_config_t *rgblight_config) {
-    (void)rgblight_config;
-    if (is_keyboard_master()) {
-        tomak_eeprom_sync_mark_region(TOMAK_EEPROM_REGION_RGBLIGHT);
-    }
-}
-#endif
 
 #endif

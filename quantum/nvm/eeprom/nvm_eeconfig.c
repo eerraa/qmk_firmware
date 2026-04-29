@@ -45,6 +45,11 @@
 #    include "connection.h"
 #endif
 
+__attribute__((weak)) void nvm_eeprom_changed_kb(uint16_t offset, uint16_t length) {
+    (void)offset;
+    (void)length;
+}
+
 void nvm_eeconfig_erase(void) {
 #ifdef EEPROM_DRIVER
     eeprom_driver_format(false);
@@ -61,6 +66,7 @@ bool nvm_eeconfig_is_disabled(void) {
 
 void nvm_eeconfig_enable(void) {
     eeprom_update_word(EECONFIG_MAGIC, EECONFIG_MAGIC_NUMBER);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_MAGIC, sizeof(uint16_t));
 }
 
 void nvm_eeconfig_disable(void) {
@@ -68,6 +74,7 @@ void nvm_eeconfig_disable(void) {
     eeprom_driver_format(false);
 #endif
     eeprom_update_word(EECONFIG_MAGIC, EECONFIG_MAGIC_NUMBER_OFF);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_MAGIC, sizeof(uint16_t));
 }
 
 void nvm_eeconfig_read_debug(debug_config_t *debug_config) {
@@ -75,6 +82,7 @@ void nvm_eeconfig_read_debug(debug_config_t *debug_config) {
 }
 void nvm_eeconfig_update_debug(const debug_config_t *debug_config) {
     eeprom_update_byte(EECONFIG_DEBUG, debug_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_DEBUG, sizeof(uint8_t));
 }
 
 layer_state_t nvm_eeconfig_read_default_layer(void) {
@@ -96,6 +104,7 @@ void nvm_eeconfig_update_default_layer(layer_state_t state) {
     uint8_t val = (uint8_t)state;
 #endif
     eeprom_update_byte(EECONFIG_DEFAULT_LAYER, val);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_DEFAULT_LAYER, sizeof(uint8_t));
 }
 
 void nvm_eeconfig_read_keymap(keymap_config_t *keymap_config) {
@@ -103,6 +112,7 @@ void nvm_eeconfig_read_keymap(keymap_config_t *keymap_config) {
 }
 void nvm_eeconfig_update_keymap(const keymap_config_t *keymap_config) {
     eeprom_update_word(EECONFIG_KEYMAP, keymap_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_KEYMAP, sizeof(uint16_t));
 }
 
 #ifdef AUDIO_ENABLE
@@ -111,6 +121,7 @@ void nvm_eeconfig_read_audio(audio_config_t *audio_config) {
 }
 void nvm_eeconfig_update_audio(const audio_config_t *audio_config) {
     eeprom_update_byte(EECONFIG_AUDIO, audio_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_AUDIO, sizeof(uint8_t));
 }
 #endif // AUDIO_ENABLE
 
@@ -120,6 +131,7 @@ void nvm_eeconfig_read_unicode_mode(unicode_config_t *unicode_config) {
 }
 void nvm_eeconfig_update_unicode_mode(const unicode_config_t *unicode_config) {
     eeprom_update_byte(EECONFIG_UNICODEMODE, unicode_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_UNICODEMODE, sizeof(uint8_t));
 }
 #endif // UNICODE_COMMON_ENABLE
 
@@ -129,6 +141,7 @@ void nvm_eeconfig_read_backlight(backlight_config_t *backlight_config) {
 }
 void nvm_eeconfig_update_backlight(const backlight_config_t *backlight_config) {
     eeprom_update_byte(EECONFIG_BACKLIGHT, backlight_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_BACKLIGHT, sizeof(uint8_t));
 }
 #endif // BACKLIGHT_ENABLE
 
@@ -138,6 +151,7 @@ uint8_t nvm_eeconfig_read_steno_mode(void) {
 }
 void nvm_eeconfig_update_steno_mode(uint8_t val) {
     eeprom_update_byte(EECONFIG_STENOMODE, val);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_STENOMODE, sizeof(uint8_t));
 }
 #endif // STENO_ENABLE
 
@@ -150,6 +164,7 @@ void nvm_eeconfig_read_rgb_matrix(rgb_config_t *rgb_matrix_config) {
 }
 void nvm_eeconfig_update_rgb_matrix(const rgb_config_t *rgb_matrix_config) {
     eeprom_update_block(rgb_matrix_config, EECONFIG_RGB_MATRIX, sizeof(rgb_config_t));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_RGB_MATRIX, sizeof(rgb_config_t));
 }
 #endif // RGB_MATRIX_ENABLE
 
@@ -159,6 +174,7 @@ void nvm_eeconfig_read_led_matrix(led_eeconfig_t *led_matrix_config) {
 }
 void nvm_eeconfig_update_led_matrix(const led_eeconfig_t *led_matrix_config) {
     eeprom_update_block(led_matrix_config, EECONFIG_LED_MATRIX, sizeof(led_eeconfig_t));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_LED_MATRIX, sizeof(led_eeconfig_t));
 }
 #endif // LED_MATRIX_ENABLE
 
@@ -170,6 +186,8 @@ void nvm_eeconfig_read_rgblight(rgblight_config_t *rgblight_config) {
 void nvm_eeconfig_update_rgblight(const rgblight_config_t *rgblight_config) {
     eeprom_update_dword(EECONFIG_RGBLIGHT, rgblight_config->raw & 0xFFFFFFFF);
     eeprom_update_byte(EECONFIG_RGBLIGHT_EXTENDED, (rgblight_config->raw >> 32) & 0xFF);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_RGBLIGHT, sizeof(uint32_t));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_RGBLIGHT_EXTENDED, sizeof(uint8_t));
 }
 #endif // RGBLIGHT_ENABLE
 
@@ -179,6 +197,7 @@ uint32_t nvm_eeconfig_read_kb(void) {
 }
 void nvm_eeconfig_update_kb(uint32_t val) {
     eeprom_update_dword(EECONFIG_KEYBOARD, val);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_KEYBOARD, sizeof(uint32_t));
 }
 #endif // (EECONFIG_KB_DATA_SIZE) == 0
 
@@ -188,6 +207,7 @@ uint32_t nvm_eeconfig_read_user(void) {
 }
 void nvm_eeconfig_update_user(uint32_t val) {
     eeprom_update_dword(EECONFIG_USER, val);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_USER, sizeof(uint32_t));
 }
 #endif // (EECONFIG_USER_DATA_SIZE) == 0
 
@@ -197,6 +217,7 @@ void nvm_eeconfig_read_haptic(haptic_config_t *haptic_config) {
 }
 void nvm_eeconfig_update_haptic(const haptic_config_t *haptic_config) {
     eeprom_update_dword(EECONFIG_HAPTIC, haptic_config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_HAPTIC, sizeof(uint32_t));
 }
 #endif // HAPTIC_ENABLE
 
@@ -206,6 +227,7 @@ void nvm_eeconfig_read_connection(connection_config_t *config) {
 }
 void nvm_eeconfig_update_connection(const connection_config_t *config) {
     eeprom_update_byte(EECONFIG_CONNECTION, config->raw);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_CONNECTION, sizeof(uint8_t));
 }
 #endif // CONNECTION_ENABLE
 
@@ -236,15 +258,18 @@ uint32_t nvm_eeconfig_read_kb_datablock(void *data, uint32_t offset, uint32_t le
 
 uint32_t nvm_eeconfig_update_kb_datablock(const void *data, uint32_t offset, uint32_t length) {
     eeprom_update_dword(EECONFIG_KEYBOARD, (EECONFIG_KB_DATA_VERSION));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_KEYBOARD, sizeof(uint32_t));
 
     void *ee_start = (void *)(uintptr_t)(EECONFIG_KB_DATABLOCK + offset);
     void *ee_end   = (void *)(uintptr_t)(EECONFIG_KB_DATABLOCK + MIN(EECONFIG_KB_DATA_SIZE, offset + length));
     eeprom_update_block(data, ee_start, ee_end - ee_start);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)(EECONFIG_KB_DATABLOCK + offset), ee_end - ee_start);
     return ee_end - ee_start;
 }
 
 void nvm_eeconfig_init_kb_datablock(void) {
     eeprom_update_dword(EECONFIG_KEYBOARD, (EECONFIG_KB_DATA_VERSION));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_KEYBOARD, sizeof(uint32_t));
 
     void   *start     = (void *)(uintptr_t)(EECONFIG_KB_DATABLOCK);
     void   *end       = (void *)(uintptr_t)(EECONFIG_KB_DATABLOCK + EECONFIG_KB_DATA_SIZE);
@@ -256,6 +281,7 @@ void nvm_eeconfig_init_kb_datablock(void) {
         start += this_loop;
         remaining -= this_loop;
     }
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_KB_DATABLOCK, EECONFIG_KB_DATA_SIZE);
 }
 
 #endif // (EECONFIG_KB_DATA_SIZE) > 0
@@ -280,15 +306,18 @@ uint32_t nvm_eeconfig_read_user_datablock(void *data, uint32_t offset, uint32_t 
 
 uint32_t nvm_eeconfig_update_user_datablock(const void *data, uint32_t offset, uint32_t length) {
     eeprom_update_dword(EECONFIG_USER, (EECONFIG_USER_DATA_VERSION));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_USER, sizeof(uint32_t));
 
     void *ee_start = (void *)(uintptr_t)(EECONFIG_USER_DATABLOCK + offset);
     void *ee_end   = (void *)(uintptr_t)(EECONFIG_USER_DATABLOCK + MIN(EECONFIG_USER_DATA_SIZE, offset + length));
     eeprom_update_block(data, ee_start, ee_end - ee_start);
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)(EECONFIG_USER_DATABLOCK + offset), ee_end - ee_start);
     return ee_end - ee_start;
 }
 
 void nvm_eeconfig_init_user_datablock(void) {
     eeprom_update_dword(EECONFIG_USER, (EECONFIG_USER_DATA_VERSION));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_USER, sizeof(uint32_t));
 
     void   *start     = (void *)(uintptr_t)(EECONFIG_USER_DATABLOCK);
     void   *end       = (void *)(uintptr_t)(EECONFIG_USER_DATABLOCK + EECONFIG_USER_DATA_SIZE);
@@ -300,6 +329,7 @@ void nvm_eeconfig_init_user_datablock(void) {
         start += this_loop;
         remaining -= this_loop;
     }
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)EECONFIG_USER_DATABLOCK, EECONFIG_USER_DATA_SIZE);
 }
 
 #endif // (EECONFIG_USER_DATA_SIZE) > 0

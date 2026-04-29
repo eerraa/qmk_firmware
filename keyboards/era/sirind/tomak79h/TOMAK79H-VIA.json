@@ -337,6 +337,25 @@
       ]
     },
     {
+      "label": "Sync",
+      "content": [
+        {
+          "label": "EEPROM Sync",
+          "content": [
+            {
+              "label": "Enabled",
+              "type": "toggle",
+              "content": [
+                "id_custom_eeprom_sync_enable",
+                0,
+                5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "label": "TAPDANCE",
       "content": [
         {"label": "TD0", "content": [{"label": "On Tap", "type": "keycode", "content": ["id_qmk_tapdance_1_tap", 0, 32]}, {"label": "On Hold", "type": "keycode", "content": ["id_qmk_tapdance_1_hold", 0, 33]}, {"label": "On Double Tap", "type": "keycode", "content": ["id_qmk_tapdance_1_dtap", 0, 34]}, {"label": "Tap+Hold", "type": "keycode", "content": ["id_qmk_tapdance_1_thold", 0, 35]}, {"label": "Term", "type": "dropdown", "content": ["id_qmk_tapdance_1_term", 0, 36], "options": [["100 ms", 10], ["120 ms", 12], ["140 ms", 14], ["160 ms", 16], ["180 ms", 18], ["200 ms", 20], ["220 ms", 22], ["240 ms", 24], ["260 ms", 26], ["280 ms", 28], ["300 ms", 30], ["320 ms", 32], ["340 ms", 34], ["360 ms", 36], ["380 ms", 38], ["400 ms", 40], ["420 ms", 42], ["440 ms", 44], ["460 ms", 46], ["480 ms", 48], ["500 ms", 50]]}]},

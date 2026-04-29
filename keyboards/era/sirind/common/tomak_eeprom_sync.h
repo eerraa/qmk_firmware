@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
+
+bool tomak_eeprom_sync_enabled_kb(void);
 
 #if defined(TOMAK_EEPROM_SYNC_ENABLE) && defined(VIA_ENABLE)
 

@@ -97,6 +97,7 @@ void nvm_dynamic_keymap_update_keycode(uint8_t layer, uint8_t row, uint8_t colum
     // Big endian, so we can read/write EEPROM directly from host if we want
     eeprom_update_byte(address, (uint8_t)(keycode >> 8));
     eeprom_update_byte(address + 1, (uint8_t)(keycode & 0xFF));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)address, sizeof(uint16_t));
 }
 
 #ifdef ENCODER_MAP_ENABLE
@@ -119,6 +120,7 @@ void nvm_dynamic_keymap_update_encoder(uint8_t layer, uint8_t encoder_id, bool c
     // Big endian, so we can read/write EEPROM directly from host if we want
     eeprom_update_byte(address + (clockwise ? 0 : 2), (uint8_t)(keycode >> 8));
     eeprom_update_byte(address + (clockwise ? 0 : 2) + 1, (uint8_t)(keycode & 0xFF));
+    nvm_eeprom_changed_kb((uint16_t)(uintptr_t)(address + (clockwise ? 0 : 2)), sizeof(uint16_t));
 }
 #endif // ENCODER_MAP_ENABLE
 
@@ -147,6 +149,9 @@ void nvm_dynamic_keymap_update_buffer(uint32_t offset, uint32_t size, uint8_t *d
         }
         source++;
         target++;
+    }
+    if (offset < dynamic_keymap_eeprom_size) {
+        nvm_eeprom_changed_kb(DYNAMIC_KEYMAP_EEPROM_ADDR + offset, MIN(dynamic_keymap_eeprom_size, offset + size) - offset);
     }
 }
 
@@ -178,6 +183,9 @@ void nvm_dynamic_keymap_macro_update_buffer(uint32_t offset, uint32_t size, uint
         source++;
         target++;
     }
+    if (offset < DYNAMIC_KEYMAP_MACRO_EEPROM_SIZE) {
+        nvm_eeprom_changed_kb(DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR + offset, MIN(DYNAMIC_KEYMAP_MACRO_EEPROM_SIZE, offset + size) - offset);
+    }
 }
 
 void nvm_dynamic_keymap_macro_reset(void) {
@@ -191,4 +199,5 @@ void nvm_dynamic_keymap_macro_reset(void) {
         start += this_loop;
         remaining -= this_loop;
     }
+    nvm_eeprom_changed_kb(DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR, DYNAMIC_KEYMAP_MACRO_EEPROM_SIZE);
 }

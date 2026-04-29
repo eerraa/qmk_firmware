@@ -182,10 +182,19 @@ tomak_config_t g_tomak_config;
 
 static void read_tomak_config_from_eeprom(tomak_config_t* config) {
     config->raw = eeconfig_read_kb();
+    if (!config->eeprom_sync_initialized) {
+        config->eeprom_sync_enable = true;
+        config->eeprom_sync_initialized = true;
+        eeconfig_update_kb(config->raw);
+    }
 }
 
 static void write_tomak_config_to_eeprom(tomak_config_t* config) {
     eeconfig_update_kb(config->raw);
+}
+
+bool tomak_eeprom_sync_enabled_kb(void) {
+    return g_tomak_config.eeprom_sync_enable;
 }
 
 void eeconfig_init_kb(void) {
@@ -196,6 +205,8 @@ void eeconfig_init_kb(void) {
     g_tomak_config.indicator_hsv.s = 255;
     g_tomak_config.indicator_hsv.v = 255;
     g_tomak_config.per_key_toggle = true;
+    g_tomak_config.eeprom_sync_enable = true;
+    g_tomak_config.eeprom_sync_initialized = true;
     write_tomak_config_to_eeprom(&g_tomak_config);
     eeconfig_init_user();
 }
@@ -306,6 +317,11 @@ static void via_tomak_config_get_value( uint8_t *data )
             *value_data = g_tomak_config.per_key_toggle;
             break;
         }
+        case id_custom_eeprom_sync_enable:
+        {
+            *value_data = g_tomak_config.eeprom_sync_enable;
+            break;
+        }
     }
 }
 
@@ -340,6 +356,11 @@ static void via_tomak_config_set_value( uint8_t *data )
         case id_custom_per_key_toggle:
         {
             g_tomak_config.per_key_toggle = (bool) *value_data;
+            break;
+        }
+        case id_custom_eeprom_sync_enable:
+        {
+            g_tomak_config.eeprom_sync_enable = (bool) *value_data;
             break;
         }
     }
