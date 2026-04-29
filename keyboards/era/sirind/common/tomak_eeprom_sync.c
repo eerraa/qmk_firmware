@@ -57,6 +57,10 @@
 #    define TOMAK_EEPROM_SYNC_QUEUE_SIZE 8
 #endif
 
+#ifndef TOMAK_EEPROM_SYNC_RGB_MATRIX_DEBOUNCE_MS
+#    define TOMAK_EEPROM_SYNC_RGB_MATRIX_DEBOUNCE_MS 500
+#endif
+
 #define TOMAK_EEPROM_SYNC_FLAG_COMPLETE 0x01
 
 enum {
@@ -97,10 +101,16 @@ static tomak_eeprom_sync_range_t sync_ranges[TOMAK_EEPROM_SYNC_QUEUE_SIZE];
 static bool                      startup_snapshot_done;
 static bool                      startup_audit_active;
 static uint16_t                  startup_audit_next;
+#ifdef RGB_MATRIX_ENABLE
+static bool                      rgb_matrix_sync_pending;
+static uint32_t                  rgb_matrix_sync_timer;
+#endif
 
 __attribute__((weak)) bool tomak_eeprom_sync_enabled_kb(void) {
     return true;
 }
+
+__attribute__((weak)) void tomak_eeprom_sync_reload_kb_config(void) {}
 
 static uint16_t tomak_eeprom_sync_size(void) {
     return (uint16_t)TOTAL_EEPROM_BYTE_COUNT;
@@ -233,6 +243,10 @@ static bool tomak_eeprom_sync_intersects(uint16_t offset, uint16_t length, uint1
 static void tomak_eeprom_sync_range_complete(uint16_t offset, uint16_t length) {
     if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_DEFAULT_LAYER, sizeof(uint8_t))) {
         default_layer_set(eeconfig_read_default_layer());
+    }
+
+    if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_KEYBOARD, sizeof(uint32_t))) {
+        tomak_eeprom_sync_reload_kb_config();
     }
 
     if (tomak_eeprom_sync_intersects(offset, length, (uint16_t)(uintptr_t)EECONFIG_KEYMAP, sizeof(uint16_t))) {
@@ -399,6 +413,29 @@ static bool tomak_eeprom_sync_audit_next_block(void) {
     return true;
 }
 
+#ifdef RGB_MATRIX_ENABLE
+static bool tomak_eeprom_sync_is_rgb_matrix_range(uint16_t offset, uint16_t length) {
+    uint16_t rgb_start = (uint16_t)(uintptr_t)EECONFIG_RGB_MATRIX;
+    uint16_t rgb_end   = rgb_start + sizeof(rgb_config_t);
+    uint16_t end       = offset + length;
+    return length > 0 && offset >= rgb_start && end <= rgb_end;
+}
+
+static void tomak_eeprom_sync_defer_rgb_matrix(void) {
+    rgb_matrix_sync_pending = true;
+    rgb_matrix_sync_timer   = timer_read32();
+}
+
+static void tomak_eeprom_sync_flush_deferred(void) {
+    if (rgb_matrix_sync_pending && timer_elapsed32(rgb_matrix_sync_timer) >= TOMAK_EEPROM_SYNC_RGB_MATRIX_DEBOUNCE_MS) {
+        rgb_matrix_sync_pending = false;
+        tomak_eeprom_sync_mark_raw_range((uint16_t)(uintptr_t)EECONFIG_RGB_MATRIX, sizeof(rgb_config_t));
+    }
+}
+#else
+static void tomak_eeprom_sync_flush_deferred(void) {}
+#endif
+
 void tomak_eeprom_sync_init(void) {
     transaction_register_rpc(RPC_ID_TOMAK_EEPROM_SYNC, tomak_eeprom_sync_slave_handler);
 }
@@ -435,6 +472,8 @@ void tomak_eeprom_sync_task(void) {
         return;
     }
 
+    tomak_eeprom_sync_flush_deferred();
+
     if (tomak_eeprom_sync_send_dirty() || tomak_eeprom_sync_audit_next_block()) {
         last_sync = timer_read32();
     }
@@ -442,6 +481,12 @@ void tomak_eeprom_sync_task(void) {
 
 void nvm_eeprom_changed_kb(uint16_t offset, uint16_t length) {
     if (is_keyboard_master() && tomak_eeprom_sync_enabled_kb()) {
+#ifdef RGB_MATRIX_ENABLE
+        if (tomak_eeprom_sync_is_rgb_matrix_range(offset, length)) {
+            tomak_eeprom_sync_defer_rgb_matrix();
+            return;
+        }
+#endif
         tomak_eeprom_sync_mark_raw_range(offset, length);
     }
 }

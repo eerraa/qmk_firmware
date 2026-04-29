@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 bool tomak_eeprom_sync_enabled_kb(void);
+void tomak_eeprom_sync_reload_kb_config(void);
 
 #if defined(TOMAK_EEPROM_SYNC_ENABLE) && defined(VIA_ENABLE)
 

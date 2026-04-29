@@ -965,6 +965,13 @@ static void tomak_split_fast_prepare_m2s(tomak_split_fast_m2s_t *packet, matrix_
 #    ifdef SPLIT_TRANSPORT_MIRROR
     memcpy(packet->payload.master_matrix, master_matrix, sizeof(packet->payload.master_matrix));
 #    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+    packet->payload.layer_state         = layer_state;
+    packet->payload.default_layer_state = default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+    packet->payload.led_state = host_keyboard_leds();
+#    endif
     packet->checksum = tomak_split_packet_crc(packet, sizeof(*packet));
 }
 
@@ -973,13 +980,6 @@ static void tomak_split_slow_prepare_m2s(tomak_split_slow_m2s_t *packet) {
     packet->magic = TOMAK_SPLIT_SLOW_MAGIC;
 #    ifndef DISABLE_SYNC_TIMER
     packet->payload.sync_timer = sync_timer_read32() + SYNC_TIMER_OFFSET;
-#    endif
-#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
-    packet->payload.layer_state         = layer_state;
-    packet->payload.default_layer_state = default_layer_state;
-#    endif
-#    ifdef SPLIT_LED_STATE_ENABLE
-    packet->payload.led_state = host_keyboard_leds();
 #    endif
 #    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
     memcpy(packet->payload.rgb_matrix_raw, &rgb_matrix_config.raw, sizeof(packet->payload.rgb_matrix_raw));
@@ -1094,16 +1094,6 @@ static bool tomak_split_fast_handlers_master(matrix_row_t master_matrix[], matri
 }
 
 static bool tomak_split_slow_dirty(const tomak_split_slow_m2s_t *packet, const tomak_split_slow_m2s_t *last_packet) {
-#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
-    if (packet->payload.layer_state != last_packet->payload.layer_state || packet->payload.default_layer_state != last_packet->payload.default_layer_state) {
-        return true;
-    }
-#    endif
-#    ifdef SPLIT_LED_STATE_ENABLE
-    if (packet->payload.led_state != last_packet->payload.led_state) {
-        return true;
-    }
-#    endif
 #    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
     if (memcmp(packet->payload.rgb_matrix_raw, last_packet->payload.rgb_matrix_raw, sizeof(packet->payload.rgb_matrix_raw)) || packet->payload.rgb_suspend_state != last_packet->payload.rgb_suspend_state) {
         return true;
@@ -1159,6 +1149,14 @@ static void tomak_split_fast_handlers_slave(matrix_row_t master_matrix[], matrix
 #    ifdef SPLIT_TRANSPORT_MIRROR
         memcpy(master_matrix, packet->payload.master_matrix, sizeof(packet->payload.master_matrix));
 #    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+        layer_state         = packet->payload.layer_state;
+        default_layer_state = packet->payload.default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+        void set_split_host_keyboard_leds(uint8_t led_state);
+        set_split_host_keyboard_leds(packet->payload.led_state);
+#    endif
     }
 
     tomak_split_fast_prepare_s2m(slave_matrix);
@@ -1176,14 +1174,6 @@ static void tomak_split_slow_handlers_slave(void) {
             last_sync_timer = packet->payload.sync_timer;
             sync_timer_update(last_sync_timer);
         }
-#    endif
-#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
-        layer_state         = packet->payload.layer_state;
-        default_layer_state = packet->payload.default_layer_state;
-#    endif
-#    ifdef SPLIT_LED_STATE_ENABLE
-        void set_split_host_keyboard_leds(uint8_t led_state);
-        set_split_host_keyboard_leds(packet->payload.led_state);
 #    endif
 #    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
         memcpy(&rgb_matrix_config.raw, packet->payload.rgb_matrix_raw, sizeof(packet->payload.rgb_matrix_raw));

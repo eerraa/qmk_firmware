@@ -125,6 +125,13 @@ typedef struct __attribute__((packed)) _tomak_split_fast_m2s_t {
 #    ifdef SPLIT_TRANSPORT_MIRROR
         matrix_row_t master_matrix[(MATRIX_ROWS) / 2];
 #    endif
+#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
+        layer_state_t layer_state;
+        layer_state_t default_layer_state;
+#    endif
+#    ifdef SPLIT_LED_STATE_ENABLE
+        uint8_t led_state;
+#    endif
     } payload;
 } tomak_split_fast_m2s_t;
 
@@ -142,13 +149,6 @@ typedef struct __attribute__((packed)) _tomak_split_slow_m2s_t {
     struct __attribute__((packed)) {
 #    ifndef DISABLE_SYNC_TIMER
         uint32_t sync_timer;
-#    endif
-#    if !defined(NO_ACTION_LAYER) && defined(SPLIT_LAYER_STATE_ENABLE)
-        layer_state_t layer_state;
-        layer_state_t default_layer_state;
-#    endif
-#    ifdef SPLIT_LED_STATE_ENABLE
-        uint8_t led_state;
 #    endif
 #    if defined(RGB_MATRIX_ENABLE) && defined(RGB_MATRIX_SPLIT)
         uint8_t rgb_matrix_raw[sizeof(uint64_t)];

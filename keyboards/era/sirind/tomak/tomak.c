@@ -42,9 +42,6 @@ bool usb_vbus_state(void) {
 #    include "split_util.h"
 #    include "transport.h"
 
-static uint32_t tomak_config_sync_success;
-static uint32_t tomak_config_sync_failed;
-
 #ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
 #    define TOMAK_SPLIT_TRANSPORT_NAME "custom"
 #else
@@ -70,12 +67,12 @@ static void tomak_send_split_diagnostics(void) {
     send_string(line);
     snprintf(line, sizeof(line), "matrix last=%u/%u max=%u/%u lastid=%d lastlen=%u/%u\r\n", diagnostics.matrix_initiator2target_length_last, diagnostics.matrix_target2initiator_length_last, diagnostics.matrix_initiator2target_length_max, diagnostics.matrix_target2initiator_length_max, diagnostics.last_transaction_id, diagnostics.last_initiator2target_length, diagnostics.last_target2initiator_length);
     send_string(line);
-    snprintf(line, sizeof(line), "rpc config ok=%lu fail=%lu\r\n", (unsigned long)tomak_config_sync_success, (unsigned long)tomak_config_sync_failed);
-    send_string(line);
 #ifdef TOMAK_SPLIT_CUSTOM_TRANSPORT
     snprintf(line, sizeof(line), "payload size fast=%u/%u slow=%u/%u row=%u rows=%u layer=%u rgb=%u\r\n", (unsigned)sizeof(tomak_split_fast_m2s_t), (unsigned)sizeof(tomak_split_fast_s2m_t), (unsigned)sizeof(tomak_split_slow_m2s_t), (unsigned)sizeof(tomak_split_slow_s2m_t), (unsigned)sizeof(matrix_row_t), (unsigned)(MATRIX_ROWS / 2), (unsigned)sizeof(layer_state_t), (unsigned)sizeof(rgb_config_t));
     send_string(line);
-    snprintf(line, sizeof(line), "slow offset payload=%u timer=%u layer=%u led=%u rgbraw=%u rgbsus=%u\r\n", (unsigned)offsetof(tomak_split_slow_m2s_t, payload), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.sync_timer), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.layer_state), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.led_state), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_matrix_raw), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_suspend_state));
+    snprintf(line, sizeof(line), "fast offset payload=%u layer=%u dlayer=%u led=%u\r\n", (unsigned)offsetof(tomak_split_fast_m2s_t, payload), (unsigned)offsetof(tomak_split_fast_m2s_t, payload.layer_state), (unsigned)offsetof(tomak_split_fast_m2s_t, payload.default_layer_state), (unsigned)offsetof(tomak_split_fast_m2s_t, payload.led_state));
+    send_string(line);
+    snprintf(line, sizeof(line), "slow offset payload=%u timer=%u rgbraw=%u rgbsus=%u\r\n", (unsigned)offsetof(tomak_split_slow_m2s_t, payload), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.sync_timer), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_matrix_raw), (unsigned)offsetof(tomak_split_slow_m2s_t, payload.rgb_suspend_state));
     send_string(line);
     tomak_split_custom_diagnostics_t custom_diagnostics;
     tomak_split_custom_diagnostics_get(&custom_diagnostics);
@@ -113,23 +110,7 @@ static void tomak_defer_slave_rgb_until_sync(void) {
 }
 #endif
 
-#ifdef TOMAK_CONFIG_SYNC
-void tomak_config_sync_handler(uint8_t initiator2target_buffer_size, const void* initiator2target_buffer, uint8_t target2initiator_buffer_size, void* target2initiator_buffer) {
-    (void)target2initiator_buffer_size;
-    (void)target2initiator_buffer;
-
-    if (initiator2target_buffer_size == sizeof(g_tomak_config)) {
-        tomak_config_t incoming;
-        memcpy(&incoming, initiator2target_buffer, sizeof(incoming));
-        if (memcmp(&g_tomak_config, &incoming, sizeof(g_tomak_config))) {
-            memcpy(&g_tomak_config, &incoming, sizeof(g_tomak_config));
-            eeconfig_update_kb(g_tomak_config.raw);
-        }
-    }
-}
-
 void keyboard_post_init_kb(void) {
-    transaction_register_rpc(RPC_ID_KB_CONFIG_SYNC, tomak_config_sync_handler);
     tomak_eeprom_sync_init();
     keyboard_post_init_user();
 #ifdef TOMAK_SPLIT_SAFE_SINGLE_WIRE
@@ -141,42 +122,10 @@ void keyboard_post_init_kb(void) {
 }
 
 void housekeeping_task_kb(void) {
-    if (is_keyboard_master()) {
-        // Keep track of the last state, so that we can tell if we need to propagate to slave.
-        static tomak_config_t last_tomak_config = {0};
-        static uint32_t           last_sync     = 0;
-        bool                      needs_sync    = false;
-
-        // Check if the state values are different.
-        if (memcmp(&g_tomak_config, &last_tomak_config, sizeof(g_tomak_config))) {
-            needs_sync = true;
-            memcpy(&last_tomak_config, &g_tomak_config, sizeof(g_tomak_config));
-        }
-        // Send to slave every 500ms regardless of state change.
-        if (timer_elapsed32(last_sync) > 500) {
-            needs_sync = true;
-        }
-
-        // Perform the sync if requested.
-        if (needs_sync) {
-            bool sync_ok = transaction_rpc_send(RPC_ID_KB_CONFIG_SYNC, sizeof(g_tomak_config), &g_tomak_config);
-#ifdef TOMAK_SPLIT_DIAGNOSTICS
-            if (sync_ok) {
-                tomak_config_sync_success++;
-            } else {
-                tomak_config_sync_failed++;
-            }
-#endif
-            if (sync_ok) {
-                last_sync = timer_read32();
-            }
-        }
-    }
     tomak_eeprom_sync_task();
     // No need to invoke the user-specific callback, as it's been called
     // already.
 }
-#endif
 
 tomak_config_t g_tomak_config;
 
@@ -191,6 +140,10 @@ static void read_tomak_config_from_eeprom(tomak_config_t* config) {
 
 static void write_tomak_config_to_eeprom(tomak_config_t* config) {
     eeconfig_update_kb(config->raw);
+}
+
+void tomak_eeprom_sync_reload_kb_config(void) {
+    read_tomak_config_from_eeprom(&g_tomak_config);
 }
 
 bool tomak_eeprom_sync_enabled_kb(void) {
